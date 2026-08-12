@@ -1,0 +1,3 @@
+node_modules/
+uid_data.db
+*.log
