@@ -161,11 +161,12 @@ body {
 .main-content {
   flex: 1;
   margin-left: 240px;
-  padding: 32px 40px;
+  padding: 24px 32px;
   height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   transition: margin-left 0.3s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content.expanded {
@@ -196,7 +197,17 @@ body {
    Tab 切换
    ======================================== */
 .tab-content { display: none; }
-.tab-content.active { display: block; }
+.tab-content.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+.tab-content.active::-webkit-scrollbar { width: 6px; }
+.tab-content.active::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+.tab-content.active::-webkit-scrollbar-track { background: transparent; }
 
 /* ========================================
    统计卡片

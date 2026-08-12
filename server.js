@@ -123,13 +123,18 @@ app.post('/api/uid/categories', (req, res) => {
 });
 
 app.delete('/api/uid/categories/:id', (req, res) => {
-  const cat = db.prepare('SELECT * FROM uid_categories WHERE id = ?').get(req.params.id);
+  const idParam = req.params.id;
+  /* 先按 ID 查找，找不到再按 name 查找 */
+  let cat = db.prepare('SELECT * FROM uid_categories WHERE id = ?').get(idParam);
+  if (!cat) {
+    cat = db.prepare('SELECT * FROM uid_categories WHERE name = ?').get(idParam);
+  }
   if (!cat) return res.status(404).json({ error: '分类不存在' });
   
   /* 把该分类下的商品改为"默认"分类 */
   db.prepare('UPDATE uid_products SET cat = ? WHERE cat = ?').run('默认', cat.name);
-  db.prepare('DELETE FROM uid_categories WHERE id = ?').run(req.params.id);
-  broadcast('category_deleted', { id: parseInt(req.params.id), name: cat.name });
+  db.prepare('DELETE FROM uid_categories WHERE id = ?').run(cat.id);
+  broadcast('category_deleted', { id: cat.id, name: cat.name });
   res.json({ success: true });
 });
 

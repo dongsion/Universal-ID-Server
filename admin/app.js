@@ -492,11 +492,12 @@ function renderCategoryList() {
   }
   list.innerHTML = categories.map(cat => {
     const name = catName(cat);
-    const safe = String(name).replace(/'/g, "\\'");
+    const id = cat.id || name;
+    const safeName = String(name).replace(/'/g, "\\'");
     return `
       <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#f5f5f7;border-radius:999px;font-size:13px;font-weight:600;">
         <span>${name}</span>
-        <button onclick="deleteCategory('${safe}')" title="删除分类" style="border:none;background:none;color:#c01a1a;cursor:pointer;font-size:15px;font-weight:700;line-height:1;padding:0;">×</button>
+        <button onclick="deleteCategory(${id})" title="删除分类" style="border:none;background:none;color:#c01a1a;cursor:pointer;font-size:15px;font-weight:700;line-height:1;padding:0;">×</button>
       </div>
     `;
   }).join('');
@@ -518,9 +519,11 @@ async function addCategory() {
   }
 }
 
-async function deleteCategory(name) {
+async function deleteCategory(id) {
+  const cat = categories.find(c => c.id === id || c.name === id);
+  const name = cat ? catName(cat) : id;
   if (!confirm(`确认删除分类"${name}"？`)) return;
-  const result = await api('/categories/' + encodeURIComponent(name), { method: 'DELETE' });
+  const result = await api('/categories/' + id, { method: 'DELETE' });
   if (result) {
     await loadCategories();
     renderCategoryList();
