@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Universal ID</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ====== 页面1: 产品浏览页 ====== -->
+  <div id="page-browse" class="page active">
+    <header class="browse-header">
+      <h1>精选商品<br>尽在此处</h1>
+      <div class="header-actions">
+        <button class="menu-btn" onclick="openManagePanel()">
+          <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="6" cy="11" r="2" fill="currentColor"/><circle cx="11" cy="11" r="2" fill="currentColor"/><circle cx="16" cy="11" r="2" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </header>
+    <div class="filter-row">
+      <button class="filter-pill active" data-cat="All">全部</button>
+      <button class="filter-pill" data-cat="Choco">巧克力</button>
+      <button class="filter-pill" data-cat="Chips">薯片</button>
+      <button class="filter-pill" data-cat="Drinks">饮料</button>
+      <button class="filter-icon">🔍</button>
+      <button class="filter-icon">✦</button>
+    </div>
+    <div class="section-title-row">
+      <h2 id="collection-title">全部商品</h2>
+      <span class="item-count" id="item-count">0 件</span>
+    </div>
+    <div class="product-grid" id="product-grid">
+      <!-- JS 注入产品卡片 -->
+    </div>
+    <div class="empty-state" id="empty-state" style="display:none">
+      <div class="empty-icon">📦</div>
+      <p class="empty-title">暂无商品</p>
+      <p class="empty-sub">点击右上角菜单添加商品</p>
+      <button class="empty-btn" onclick="openManagePanel()">添加商品</button>
+    </div>
+  </div>
+
+  <!-- ====== 页面2: 商品详情页 ====== -->
+  <div id="page-detail" class="page">
+    <div class="detail-nav">
+      <button class="back-btn" onclick="showPage('browse')">
+        <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 12 12)"/></svg>
+      </button>
+    </div>
+    <div class="detail-content" id="detail-content">
+      <!-- JS 注入详情内容 -->
+    </div>
+    <div class="detail-bottom">
+      <div class="quantity-selector">
+        <button class="qty-btn qty-minus" onclick="changeQty(-1)">−</button>
+        <span class="qty-number" id="qty-number">1</span>
+        <button class="qty-btn qty-plus" onclick="changeQty(1)">+</button>
+      </div>
+      <div class="price-tag" id="detail-price">$6.00</div>
+      <button class="detail-add-btn" id="detail-add-btn" onclick="addFromDetail()">
+        <svg width="22" height="22" viewBox="0 0 22 22"><path d="M3 5h3l2 10h8l2-7H7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="8" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ====== 页面3: 购物车页 ====== -->
+  <div id="page-cart" class="page">
+    <div class="cart-header">
+      <button class="back-btn" onclick="showPage('browse')">
+        <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 12 12)"/></svg>
+      </button>
+      <h2>购物车</h2>
+      <div class="cart-badge-top" id="cart-badge-top">0</div>
+    </div>
+    <div class="cart-body" id="cart-body">
+      <!-- JS 注入购物车内容 -->
+    </div>
+  </div>
+
+  <!-- ====== 悬浮购物车条 ====== -->
+  <div class="cart-bar hidden" id="cart-bar" onclick="showPage('cart')">
+    <div class="cart-bar-left">
+      <div class="cart-bar-badge" id="cart-bar-badge">0</div>
+      <div class="cart-bar-text">
+        <span class="cart-bar-title">购物车</span>
+        <span class="cart-bar-sub" id="cart-bar-sub">0 件</span>
+      </div>
+    </div>
+    <div class="cart-bar-thumbs" id="cart-bar-thumbs">
+      <!-- JS 注入缩略图 -->
+    </div>
+  </div>
+
+  <!-- ====== 飞入动画的飞行体 ====== -->
+  <div class="fly-clone" id="fly-clone"></div>
+
+  <!-- ====== 商品管理面板 ====== -->
+  <div class="manage-overlay" id="manage-overlay">
+    <div class="manage-panel" id="manage-panel">
+      <div class="manage-header">
+        <h2>商品管理</h2>
+        <button class="manage-close" onclick="closeManagePanel()">✕</button>
+      </div>
+
+      <!-- 商品列表 -->
+      <div class="manage-list-section">
+        <div class="manage-list-header">
+          <span>商品列表 (<span id="manage-count">0</span>)</span>
+          <button class="manage-add-btn" onclick="showAddForm()">
+            <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            添加商品
+          </button>
+        </div>
+        <div class="manage-list" id="manage-list">
+          <!-- JS 注入管理列表 -->
+        </div>
+      </div>
+
+      <!-- 添加/编辑表单 -->
+      <div class="manage-form-section" id="manage-form-section" style="display:none">
+        <div class="manage-form-header">
+          <button class="form-back-btn" onclick="hideAddForm()">← 返回</button>
+          <span id="form-title">添加新商品</span>
+        </div>
+        <div class="manage-form">
+          <div class="form-group">
+            <label>商品图片</label>
+            <div class="image-upload-area" id="image-upload-area" onclick="document.getElementById('image-input').click()">
+              <div class="upload-placeholder" id="upload-placeholder">
+                <svg width="32" height="32" viewBox="0 0 32 32"><path d="M16 8v16M8 16h16" stroke="#ccc" stroke-width="2" stroke-linecap="round"/></svg>
+                <span>上传图片</span>
+              </div>
+              <img class="upload-preview" id="upload-preview" style="display:none">
+            </div>
+            <input type="file" id="image-input" accept="image/*" style="display:none">
+          </div>
+          <div class="form-group">
+            <label>商品名称</label>
+            <input type="text" id="form-name" placeholder="例如：椰子脆片" maxlength="30">
+          </div>
+          <div class="form-group">
+            <label>品牌</label>
+            <input type="text" id="form-brand" placeholder="例如：Dang" maxlength="20">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>价格 ($)</label>
+              <input type="number" id="form-price" placeholder="6.00" min="0" step="0.01">
+            </div>
+            <div class="form-group">
+              <label>库存</label>
+              <input type="number" id="form-stock" placeholder="100" min="0" step="1">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>分类</label>
+            <select id="form-category">
+              <option value="Chips">薯片</option>
+              <option value="Choco">巧克力</option>
+              <option value="Drinks">饮料</option>
+              <option value="Cookies">饼干</option>
+              <option value="Nuts">坚果</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>卡片背景色</label>
+            <div class="color-picker" id="color-picker">
+              <div class="color-option selected" data-color="#FFF3D6" style="background:#FFF3D6"></div>
+              <div class="color-option" data-color="#D6F5E0" style="background:#D6F5E0"></div>
+              <div class="color-option" data-color="#F5D6E0" style="background:#F5D6E0"></div>
+              <div class="color-option" data-color="#D6E8F5" style="background:#D6E8F5"></div>
+              <div class="color-option" data-color="#E0D6F5" style="background:#E0D6F5"></div>
+              <div class="color-option" data-color="#F5E8D6" style="background:#F5E8D6"></div>
+              <div class="color-option" data-color="#D6F5E8" style="background:#D6F5E8"></div>
+              <div class="color-option" data-color="#F5D6D6" style="background:#F5D6D6"></div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="form-cancel-btn" onclick="hideAddForm()">取消</button>
+            <button class="form-save-btn" id="form-save-btn" onclick="saveProduct()">保存商品</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== Toast 提示 ====== -->
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

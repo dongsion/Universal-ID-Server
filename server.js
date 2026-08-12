@@ -1,6 +1,7 @@
 /* ========================================
-   Universal ID - 后端服务器
+   Universal ID - 后端服务器 v2
    Node.js + Express + SQLite + WebSocket
+   直接托管前端 + 分类管理 + 商家登录
    ======================================== */
 
 const express = require('express');
@@ -8,6 +9,7 @@ const WebSocket = require('ws');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,6 +17,10 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
+
+/* ---- 静态文件托管 ---- */
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
 /* ---- SQLite 数据库 ---- */
 const Database = require('better-sqlite3');
@@ -28,7 +34,7 @@ db.exec(`
     brand TEXT DEFAULT '',
     price REAL DEFAULT 0,
     stock INTEGER DEFAULT 0,
-    cat TEXT DEFAULT 'Chips',
+    cat TEXT DEFAULT '默认',
     bg TEXT DEFAULT '#FFF3D6',
     image TEXT,
     bagBg TEXT,
@@ -44,25 +50,26 @@ db.exec(`
     status TEXT DEFAULT 'pending',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS uid_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    sort INTEGER DEFAULT 0
+  );
 `);
 
-/* ---- 初始化默认商品（首次启动） ---- */
-const count = db.prepare('SELECT COUNT(*) as c FROM uid_products').get();
-if (count.c === 0) {
-  const defaults = [
-    { name: '史密斯薯片', brand: 'Smiths', price: 7, stock: 50, bg: '#FFF3D6', bagBg: '#E8650C', bagText: 'SMITHS', bagSub: '原味', cat: 'Chips' },
-    { name: '椰子脆片', brand: 'Dang', price: 6, stock: 80, bg: '#D6F5E0', bagBg: '#1A8A4E', bagText: 'dang', bagSub: '椰子味', cat: 'Chips' },
-    { name: '黑金薯片', brand: 'Idaho', price: 8, stock: 30, bg: '#F5D6E0', bagBg: '#2A2A2A', bagText: 'IDAHO', bagSub: '黑椒味', cat: 'Chips' },
-    { name: '天然波浪薯片', brand: 'Ruffles', price: 8, stock: 60, bg: '#D6E8F5', bagBg: '#1A5B9E', bagText: 'RUFFLES', bagSub: '原味', cat: 'Chips' },
-    { name: '卷卷薯片', brand: 'Twistos', price: 6, stock: 0, bg: '#F5D6D6', bagBg: '#C01A1A', bagText: 'TWISTOS', bagSub: '烧烤味', cat: 'Chips' },
-    { name: '深河海盐薯片', brand: 'Deep River', price: 9, stock: 25, bg: '#E0D6F5', bagBg: '#5B1A8A', bagText: 'DEEP RIVER', bagSub: '海盐味', cat: 'Chips' },
-    { name: '梦境松露', brand: 'Unreal', price: 6, stock: 40, bg: '#D6F5E8', bagBg: '#1A8A6E', bagText: 'UNREAL', bagSub: '可可味', cat: 'Choco' },
-    { name: '完美零食', brand: 'Perfect', price: 8, stock: 35, bg: '#F5E8D6', bagBg: '#5B3A1A', bagText: 'PERFECT', bagSub: '黑巧味', cat: 'Choco' },
-  ];
-  const insert = db.prepare(`INSERT INTO uid_products (name, brand, price, stock, bg, bagBg, bagText, bagSub, cat) VALUES (@name, @brand, @price, @stock, @bg, @bagBg, @bagText, @bagSub, @cat)`);
-  defaults.forEach(p => insert.run(p));
-  console.log('默认商品已初始化');
+/* ---- 初始化默认分类 ---- */
+const catCount = db.prepare('SELECT COUNT(*) as c FROM uid_categories').get();
+if (catCount.c === 0) {
+  ['默认'].forEach((name, i) => {
+    db.prepare('INSERT INTO uid_categories (name, sort) VALUES (?, ?)').run(name, i);
+  });
+  console.log('默认分类已初始化');
 }
+
+/* ---- 商家登录密码（只有你知道） ---- */
+const ADMIN_USER = 'admin';
+const ADMIN_PASS = 'uid2024';
 
 /* ========================================
    WebSocket 广播
@@ -82,36 +89,76 @@ wss.on('connection', (ws) => {
 });
 
 /* ========================================
+   API: 商家登录
+   ======================================== */
+app.post('/api/uid/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    const token = crypto.createHash('md5').update(username + Date.now()).digest('hex');
+    res.json({ success: true, token });
+  } else {
+    res.status(401).json({ error: '用户名或密码错误' });
+  }
+});
+
+/* ========================================
+   API: 分类管理
+   ======================================== */
+app.get('/api/uid/categories', (req, res) => {
+  const cats = db.prepare('SELECT * FROM uid_categories ORDER BY sort, id').all();
+  res.json(cats);
+});
+
+app.post('/api/uid/categories', (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: '分类名称不能为空' });
+  try {
+    const result = db.prepare('INSERT INTO uid_categories (name, sort) VALUES (?, ?)').run(name, Date.now());
+    const newCat = db.prepare('SELECT * FROM uid_categories WHERE id = ?').get(result.lastInsertRowid);
+    broadcast('category_added', newCat);
+    res.json(newCat);
+  } catch (e) {
+    res.status(400).json({ error: '分类已存在' });
+  }
+});
+
+app.delete('/api/uid/categories/:id', (req, res) => {
+  const cat = db.prepare('SELECT * FROM uid_categories WHERE id = ?').get(req.params.id);
+  if (!cat) return res.status(404).json({ error: '分类不存在' });
+  
+  /* 把该分类下的商品改为"默认"分类 */
+  db.prepare('UPDATE uid_products SET cat = ? WHERE cat = ?').run('默认', cat.name);
+  db.prepare('DELETE FROM uid_categories WHERE id = ?').run(req.params.id);
+  broadcast('category_deleted', { id: parseInt(req.params.id), name: cat.name });
+  res.json({ success: true });
+});
+
+/* ========================================
    API: 商品管理
    ======================================== */
-
-/* 获取所有商品 */
 app.get('/api/uid/products', (req, res) => {
   const products = db.prepare('SELECT * FROM uid_products ORDER BY id').all();
   res.json(products);
 });
 
-/* 获取单个商品 */
 app.get('/api/uid/products/:id', (req, res) => {
   const product = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(req.params.id);
   if (!product) return res.status(404).json({ error: '商品不存在' });
   res.json(product);
 });
 
-/* 添加商品 */
 app.post('/api/uid/products', (req, res) => {
   const { name, brand, price, stock, cat, bg, image, bagBg, bagText, bagSub } = req.body;
   if (!name) return res.status(400).json({ error: '商品名称不能为空' });
 
   const result = db.prepare(`INSERT INTO uid_products (name, brand, price, stock, cat, bg, image, bagBg, bagText, bagSub) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(name, brand || '', price || 0, stock || 0, cat || 'Chips', bg || '#FFF3D6', image || null, bagBg || null, bagText || null, bagSub || null);
+    .run(name, brand || '', price || 0, stock || 0, cat || '默认', bg || '#FFF3D6', image || null, bagBg || null, bagText || null, bagSub || null);
 
   const newProduct = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(result.lastInsertRowid);
   broadcast('product_added', newProduct);
   res.json(newProduct);
 });
 
-/* 更新商品 */
 app.put('/api/uid/products/:id', (req, res) => {
   const { name, brand, price, stock, cat, bg, image, bagBg, bagText, bagSub } = req.body;
   const existing = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(req.params.id);
@@ -137,7 +184,6 @@ app.put('/api/uid/products/:id', (req, res) => {
   res.json(updated);
 });
 
-/* 快速调整库存 */
 app.patch('/api/uid/products/:id/stock', (req, res) => {
   const { stock } = req.body;
   const product = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(req.params.id);
@@ -151,7 +197,6 @@ app.patch('/api/uid/products/:id/stock', (req, res) => {
   res.json(updated);
 });
 
-/* 删除商品 */
 app.delete('/api/uid/products/:id', (req, res) => {
   const product = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(req.params.id);
   if (!product) return res.status(404).json({ error: '商品不存在' });
@@ -164,15 +209,12 @@ app.delete('/api/uid/products/:id', (req, res) => {
 /* ========================================
    API: 订单管理
    ======================================== */
-
-/* 获取所有订单 */
 app.get('/api/uid/orders', (req, res) => {
   const orders = db.prepare('SELECT * FROM uid_orders ORDER BY created_at DESC').all();
   orders.forEach(o => { o.items = JSON.parse(o.items || '[]'); });
   res.json(orders);
 });
 
-/* 创建订单（顾客下单） */
 app.post('/api/uid/orders', (req, res) => {
   const { items, total } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -183,7 +225,6 @@ app.post('/api/uid/orders', (req, res) => {
   db.prepare('INSERT INTO uid_orders (id, items, total, status) VALUES (?, ?, ?, ?)')
     .run(orderId, JSON.stringify(items), total || 0, 'pending');
 
-  /* 扣减库存 */
   items.forEach(item => {
     if (item.id) {
       const product = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(item.id);
@@ -197,15 +238,11 @@ app.post('/api/uid/orders', (req, res) => {
 
   const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(orderId);
   order.items = JSON.parse(order.items);
-
-  /* 实时推送新订单给商家端 */
   broadcast('order_new', order);
   console.log(`新订单: ${orderId}, 总额: $${total}`);
-
   res.json(order);
 });
 
-/* 更新订单状态 */
 app.patch('/api/uid/orders/:id/status', (req, res) => {
   const { status } = req.body;
   const validStatus = ['pending', 'completed', 'cancelled'];
@@ -217,16 +254,12 @@ app.patch('/api/uid/orders/:id/status', (req, res) => {
   if (!order) return res.status(404).json({ error: '订单不存在' });
 
   db.prepare('UPDATE uid_orders SET status=? WHERE id=?').run(status, req.params.id);
-
   const updated = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
   updated.items = JSON.parse(updated.items);
   broadcast('order_updated', updated);
   res.json(updated);
 });
 
-/* ========================================
-   健康检查
-   ======================================== */
 app.get('/api/uid/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
@@ -237,9 +270,12 @@ app.get('/api/uid/health', (req, res) => {
 const PORT = process.env.PORT || 3210;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n========================================`);
-  console.log(`  Universal ID 后端服务已启动`);
-  console.log(`  HTTP:  http://43.139.32.212:${PORT}`);
-  console.log(`  WS:    ws://43.139.32.212:${PORT}/ws`);
-  console.log(`  端口:  ${PORT}`);
+  console.log(`  Universal ID 服务已启动`);
+  console.log(`  客户端:  http://43.139.32.212:${PORT}`);
+  console.log(`  商家端:  http://43.139.32.212:${PORT}/admin`);
+  console.log(`  API:     http://43.139.32.212:${PORT}/api/uid`);
+  console.log(`  WS:      ws://43.139.32.212:${PORT}/ws`);
+  console.log(`  端口:    ${PORT}`);
+  console.log(`  账号:    admin / uid2024`);
   console.log(`========================================\n`);
 });
