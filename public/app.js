@@ -576,13 +576,11 @@ async function submitOrder() {
   const note = document.getElementById('checkout-note').value.trim();
 
   if (!name) { showToast('请输入收货人姓名'); return; }
-  if (!phone || phone.length < 11) { showToast('请输入正确的手机号'); return; }
-  if (!address) { showToast('请输入收货地址'); return; }
+  if (!phone) { showToast('请输入联系方式'); return; }
 
-  /* 保存收货信息 */
+  /* 保存联系信息 */
   saveAddress({ name, phone, address });
 
-  /* 获取结算商品 */
   const isBuyNow = buyNowItem !== null;
   const items = isBuyNow
     ? [buyNowItem]
@@ -597,7 +595,7 @@ async function submitOrder() {
     body: JSON.stringify({
       items: items.map(c => ({ id: c.id, name: c.name, brand: c.brand, price: c.price, qty: c.qty, image: c.image })),
       total,
-      address: { name, phone, address, note }
+      contact: { name, phone, address, note }
     })
   });
 
@@ -607,7 +605,6 @@ async function submitOrder() {
     if (isBuyNow) {
       buyNowItem = null;
     } else {
-      /* 从购物车移除已结算商品 */
       const settledIds = new Set(items.map(i => i.id));
       cart = cart.filter(c => !settledIds.has(c.id));
       items.forEach(i => selectedItems.delete(i.id));
@@ -618,7 +615,7 @@ async function submitOrder() {
     cartBar.classList.add('hidden');
     renderSuccessPage(order);
     showPage('success');
-    showToast('支付成功！');
+    showToast('订单已提交，等待商家确认');
   }
 }
 
@@ -626,8 +623,50 @@ async function submitOrder() {
    订单成功页
    ======================================== */
 function renderSuccessPage(order) {
+  const successTitle = document.getElementById('success-title');
+  const successIcon = document.getElementById('success-icon');
+  if (successTitle) {
+    successTitle.textContent = order.status === 'delivered' ? '卡密已交付' : order.status === 'cancelled' ? '订单已取消' : '订单已提交';
+  }
+  if (successIcon) {
+    successIcon.textContent = order.status === 'delivered' ? '✓' : order.status === 'cancelled' ? '✕' : '⏳';
+    successIcon.style.background = order.status === 'cancelled' ? '#ff3b30' : order.status === 'delivered' ? '#34c759' : '#FFD60A';
+  }
+
   document.getElementById('success-order-id').textContent = `订单号：${order.id}`;
+
+  const statusNames = {
+    'pending': '商家确认中',
+    'confirmed': '已确认，请付款',
+    'paid': '商家处理中',
+    'delivered': '卡密已交付',
+    'cancelled': '已取消'
+  };
+
+  const statusColors = {
+    'pending': '#FFD60A',
+    'confirmed': '#FF9500',
+    'paid': '#007AFF',
+    'delivered': '#34c759',
+    'cancelled': '#ff3b30'
+  };
+
+  let cardKeysHTML = '';
+  if (order.card_keys) {
+    cardKeysHTML = `
+      <div style="margin-top:16px;padding:16px;background:#E8F8EE;border-radius:12px;border:1px solid #34c759;">
+        <div style="font-size:13px;font-weight:700;color:#1a8a4e;margin-bottom:8px;">🔑 您的卡密</div>
+        <div style="font-size:14px;color:#1a1a1a;white-space:pre-wrap;word-break:break-all;font-family:monospace;background:#fff;padding:12px;border-radius:8px;">${order.card_keys}</div>
+      </div>
+    `;
+  }
+
   document.getElementById('success-body').innerHTML = `
+    <div style="text-align:center;padding:16px 0;">
+      <div style="display:inline-block;padding:6px 16px;border-radius:999px;background:${statusColors[order.status] || '#999'};color:#fff;font-size:13px;font-weight:700;">
+        ${statusNames[order.status] || order.status}
+      </div>
+    </div>
     ${(order.items || []).map(i => `
       <div class="success-order-item">
         <div class="success-order-item-name">${i.name}</div>
@@ -636,8 +675,16 @@ function renderSuccessPage(order) {
       </div>
     `).join('')}
     <div class="success-total">
-      <span class="success-total-label">支付金额</span>
+      <span class="success-total-label">应付金额</span>
       <span class="success-total-amount">$${Number(order.total).toFixed(2)}</span>
+    </div>
+    ${cardKeysHTML}
+    <div style="margin-top:16px;padding:12px;background:#FFF8E0;border-radius:10px;font-size:12px;color:#b8860b;line-height:1.6;">
+      ${order.status === 'pending' ? '⏳ 商家正在确认您的订单，请耐心等待...' : ''}
+      ${order.status === 'confirmed' ? '💰 商家已确认，请联系商家付款，付款后商家将发放卡密' : ''}
+      ${order.status === 'paid' ? '📦 商家正在处理，卡密即将发出...' : ''}
+      ${order.status === 'delivered' ? '✅ 卡密已发放，请妥善保管！' : ''}
+      ${order.status === 'cancelled' ? '❌ 订单已取消' : ''}
     </div>
   `;
 }
@@ -660,7 +707,9 @@ function renderOrdersList() {
     return;
   }
 
-  const statusNames = { 'pending': '待处理', 'completed': '已完成', 'cancelled': '已取消' };
+  const statusNames = { 'pending': '商家确认中', 'confirmed': '待付款', 'paid': '处理中', 'delivered': '已交付', 'cancelled': '已取消' };
+  const statusColors = { 'pending': '#FFD60A', 'confirmed': '#FF9500', 'paid': '#007AFF', 'delivered': '#34c759', 'cancelled': '#ff3b30' };
+
   ordersList.innerHTML = history.map(o => `
     <div class="order-record">
       <div class="order-record-top">
@@ -668,11 +717,17 @@ function renderOrdersList() {
           <div class="order-record-id">${o.id}</div>
           <div class="order-record-time">${formatOrderDate(o.created_at)}</div>
         </div>
-        <span class="order-record-status ${o.status}">${statusNames[o.status] || o.status}</span>
+        <span class="order-record-status" style="background:${(statusColors[o.status] || '#999')}22;color:${statusColors[o.status] || '#999'};">${statusNames[o.status] || o.status}</span>
       </div>
       <div class="order-record-items">
         ${(o.items || []).map(i => `<span class="order-record-item">${i.name} ×${i.qty}</span>`).join('')}
       </div>
+      ${o.card_keys ? `
+        <div style="margin:10px 0;padding:12px;background:#E8F8EE;border-radius:10px;border:1px solid #34c759;">
+          <div style="font-size:12px;font-weight:700;color:#1a8a4e;margin-bottom:6px;">🔑 卡密</div>
+          <div style="font-size:13px;color:#1a1a1a;white-space:pre-wrap;word-break:break-all;font-family:monospace;background:#fff;padding:10px;border-radius:6px;">${o.card_keys}</div>
+        </div>
+      ` : ''}
       <div class="order-record-total">
         <span class="order-record-total-label">合计</span>
         <span class="order-record-total-value">$${Number(o.total).toFixed(2)}</span>

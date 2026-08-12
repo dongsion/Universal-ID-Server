@@ -123,13 +123,22 @@ html, body {
   justify-content: space-between;
   align-items: flex-start;
   padding: 8px 20px 0;
+  gap: 12px;
 }
 .browse-header h1 {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: -0.5px;
   color: #1a1a1a;
+  flex: 1;
+  min-width: 0;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .menu-btn {
   background: none;
@@ -728,6 +737,8 @@ html, body {
 
 .cart-item-info {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .cart-item-name {
   font-size: 15px;
@@ -2081,6 +2092,8 @@ html, body {
 .cart-qty-btn {
   width: 28px;
   height: 28px;
+  min-width: 28px;
+  min-height: 28px;
   border-radius: 50%;
   border: 1.5px solid rgba(255,255,255,0.3);
   background: transparent;
@@ -2091,6 +2104,7 @@ html, body {
   align-items: center;
   justify-content: center;
   line-height: 1;
+  flex-shrink: 0;
   transition: all 0.15s ease;
 }
 .cart-qty-btn:active { background: rgba(255,255,255,0.15); transform: scale(0.9); }

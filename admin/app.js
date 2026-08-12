@@ -16,8 +16,10 @@ async function loadCategories() {
 
 /* ---- 订单状态映射 ---- */
 const STATUS_NAMES = {
-  'pending': '待处理',
-  'completed': '已完成',
+  'pending': '待确认',
+  'confirmed': '待付款',
+  'paid': '处理中',
+  'delivered': '已交付',
   'cancelled': '已取消',
 };
 
@@ -579,6 +581,8 @@ function renderOrders() {
         <span class="order-status ${o.status}">${STATUS_NAMES[o.status] || o.status}</span>
       </div>
       <div class="order-card-items">
+        ${o.contact ? `<div style="font-size:12px;color:#666;padding:4px 0;">📞 ${o.contact.name || ''} ${o.contact.phone || ''}</div>` : ''}
+        ${o.card_keys ? '<div style="font-size:11px;color:#1a8a4e;padding:2px 0;">🔑 卡密已交付</div>' : ''}
         ${(o.items || []).map(i => `
           <div class="order-card-item">
             ${i.name}
@@ -612,6 +616,32 @@ function openOrderModal(orderId) {
   const order = orders.find(o => o.id === orderId);
   if (!order) return;
 
+  let contactHTML = '';
+  if (order.contact) {
+    const c = order.contact;
+    contactHTML = `
+      <div style="padding:12px;background:#f5f5f7;border-radius:10px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:#666;margin-bottom:6px;">📋 客户信息</div>
+        <div style="font-size:13px;color:#1a1a1a;line-height:1.8;">
+          ${c.name ? `<div>联系人：${c.name}</div>` : ''}
+          ${c.phone ? `<div>联系方式：${c.phone}</div>` : ''}
+          ${c.address ? `<div>备注：${c.address}</div>` : ''}
+          ${c.note ? `<div>留言：${c.note}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  let cardKeysHTML = '';
+  if (order.card_keys) {
+    cardKeysHTML = `
+      <div style="padding:12px;background:#E8F8EE;border-radius:10px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:700;color:#1a8a4e;margin-bottom:6px;">🔑 已交付卡密</div>
+        <div style="font-size:13px;color:#1a1a1a;white-space:pre-wrap;word-break:break-all;font-family:monospace;background:#fff;padding:10px;border-radius:6px;">${order.card_keys}</div>
+      </div>
+    `;
+  }
+
   document.getElementById('order-modal-body').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
@@ -620,6 +650,7 @@ function openOrderModal(orderId) {
       </div>
       <span class="order-status ${order.status}">${STATUS_NAMES[order.status] || order.status}</span>
     </div>
+    ${contactHTML}
     ${(order.items || []).map(i => `
       <div class="order-detail-row">
         <div>
@@ -635,18 +666,36 @@ function openOrderModal(orderId) {
         <span class="order-detail-total-value">$${Number(order.total).toFixed(2)}</span>
       </div>
     </div>
+    ${cardKeysHTML}
   `;
+
+  /* 显示卡密交付区域 */
+  const deliverSection = document.getElementById('order-deliver-section');
+  if (order.status === 'paid' || order.status === 'confirmed' || order.status === 'pending') {
+    deliverSection.style.display = 'block';
+  } else {
+    deliverSection.style.display = 'none';
+  }
 
   const footer = document.getElementById('order-modal-footer');
   if (order.status === 'pending') {
     footer.innerHTML = `
+      <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">拒绝订单</button>
+      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'confirmed')">确认订单</button>
+    `;
+  } else if (order.status === 'confirmed') {
+    footer.innerHTML = `
       <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">取消订单</button>
-      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'completed')">标记完成</button>
+      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'paid')">确认已收款</button>
+    `;
+  } else if (order.status === 'paid') {
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">取消订单</button>
     `;
   } else {
     footer.innerHTML = `
       <button class="btn-secondary" onclick="closeOrderModal()">关闭</button>
-      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'pending')">重新打开</button>
+      ${order.status !== 'delivered' ? `<button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'pending')">重新打开</button>` : ''}
     `;
   }
 
@@ -668,6 +717,31 @@ async function updateOrderStatus(orderId, status) {
     renderOrders();
     closeOrderModal();
     showToast(`订单已${STATUS_NAMES[status] || status}`);
+  }
+}
+
+async function deliverCardKeys() {
+  const orderId = orders.find(o => o.id === document.querySelector('#order-modal-body .order-status')?.textContent)?.id;
+  /* 通过当前打开的订单获取ID */
+  const modalBody = document.getElementById('order-modal-body');
+  const orderIdEl = modalBody.querySelector('div[style*="font-size:15px;font-weight:700"]');
+  if (!orderIdEl) return;
+  const currentOrderId = orderIdEl.textContent.trim();
+  
+  const cardKeys = document.getElementById('deliver-card-keys').value.trim();
+  if (!cardKeys) { showToast('请输入卡密'); return; }
+
+  const result = await api(`/orders/${currentOrderId}/deliver`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cardKeys })
+  });
+  
+  if (result) {
+    const idx = orders.findIndex(o => o.id === currentOrderId);
+    if (idx >= 0) orders[idx] = result;
+    renderOrders();
+    closeOrderModal();
+    showToast('卡密已交付！');
   }
 }
 

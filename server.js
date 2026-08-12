@@ -49,6 +49,8 @@ db.exec(`
     items TEXT,
     total REAL DEFAULT 0,
     status TEXT DEFAULT 'pending',
+    contact TEXT,
+    card_keys TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -65,6 +67,20 @@ try {
 } catch (e) {
   db.exec('ALTER TABLE uid_products ADD COLUMN active INTEGER DEFAULT 1');
   console.log('已添加 active 列到 uid_products');
+}
+
+/* ---- 兼容旧数据库：添加 contact 和 card_keys 列 ---- */
+try {
+  db.prepare('SELECT contact FROM uid_orders LIMIT 0').get();
+} catch (e) {
+  db.exec('ALTER TABLE uid_orders ADD COLUMN contact TEXT');
+  console.log('已添加 contact 列到 uid_orders');
+}
+try {
+  db.prepare('SELECT card_keys FROM uid_orders LIMIT 0').get();
+} catch (e) {
+  db.exec('ALTER TABLE uid_orders ADD COLUMN card_keys TEXT');
+  console.log('已添加 card_keys 列到 uid_orders');
 }
 
 /* ---- 初始化默认分类 ---- */
@@ -236,9 +252,13 @@ app.patch('/api/uid/products/:id/toggle', (req, res) => {
 /* ========================================
    API: 订单管理
    ======================================== */
+/* ---- 订单状态：pending=待确认, confirmed=已确认待付款, paid=已付款待发货, delivered=已交付卡密, cancelled=已取消 ---- */
 app.get('/api/uid/orders', (req, res) => {
   const orders = db.prepare('SELECT * FROM uid_orders ORDER BY created_at DESC').all();
-  orders.forEach(o => { o.items = JSON.parse(o.items || '[]'); });
+  orders.forEach(o => {
+    o.items = JSON.parse(o.items || '[]');
+    if (o.contact) o.contact = JSON.parse(o.contact);
+  });
   res.json(orders);
 });
 
@@ -247,32 +267,24 @@ app.get('/api/uid/orders/:id', (req, res) => {
   const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
   if (!order) return res.status(404).json({ error: '订单不存在' });
   order.items = JSON.parse(order.items || '[]');
+  if (order.contact) order.contact = JSON.parse(order.contact);
   res.json(order);
 });
 
 app.post('/api/uid/orders', (req, res) => {
-  const { items, total } = req.body;
+  const { items, total, contact } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: '订单不能为空' });
   }
 
   const orderId = 'ORD-' + Date.now();
-  db.prepare('INSERT INTO uid_orders (id, items, total, status) VALUES (?, ?, ?, ?)')
-    .run(orderId, JSON.stringify(items), total || 0, 'pending');
-
-  items.forEach(item => {
-    if (item.id) {
-      const product = db.prepare('SELECT * FROM uid_products WHERE id = ?').get(item.id);
-      if (product) {
-        const newStock = Math.max(0, product.stock - (item.qty || 1));
-        db.prepare('UPDATE uid_products SET stock=? WHERE id=?').run(newStock, item.id);
-        broadcast('product_updated', { ...product, stock: newStock });
-      }
-    }
-  });
+  const contactStr = contact ? JSON.stringify(contact) : null;
+  db.prepare('INSERT INTO uid_orders (id, items, total, status, contact) VALUES (?, ?, ?, ?, ?)')
+    .run(orderId, JSON.stringify(items), total || 0, 'pending', contactStr);
 
   const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(orderId);
   order.items = JSON.parse(order.items);
+  if (order.contact) order.contact = JSON.parse(order.contact);
   broadcast('order_new', order);
   console.log(`新订单: ${orderId}, 总额: $${total}`);
   res.json(order);
@@ -280,7 +292,7 @@ app.post('/api/uid/orders', (req, res) => {
 
 app.patch('/api/uid/orders/:id/status', (req, res) => {
   const { status } = req.body;
-  const validStatus = ['pending', 'completed', 'cancelled'];
+  const validStatus = ['pending', 'confirmed', 'paid', 'delivered', 'cancelled'];
   if (!validStatus.includes(status)) {
     return res.status(400).json({ error: '无效状态' });
   }
@@ -291,6 +303,28 @@ app.patch('/api/uid/orders/:id/status', (req, res) => {
   db.prepare('UPDATE uid_orders SET status=? WHERE id=?').run(status, req.params.id);
   const updated = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
   updated.items = JSON.parse(updated.items);
+  if (updated.contact) updated.contact = JSON.parse(updated.contact);
+  if (updated.card_keys) updated.card_keys = updated.card_keys;
+  broadcast('order_updated', updated);
+  res.json(updated);
+});
+
+/* 商家交付卡密 */
+app.patch('/api/uid/orders/:id/deliver', (req, res) => {
+  const { cardKeys } = req.body;
+  if (!cardKeys || !cardKeys.trim()) {
+    return res.status(400).json({ error: '卡密不能为空' });
+  }
+
+  const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+
+  db.prepare('UPDATE uid_orders SET status=?, card_keys=? WHERE id=?')
+    .run('delivered', cardKeys.trim(), req.params.id);
+
+  const updated = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
+  updated.items = JSON.parse(updated.items);
+  if (updated.contact) updated.contact = JSON.parse(updated.contact);
   broadcast('order_updated', updated);
   res.json(updated);
 });

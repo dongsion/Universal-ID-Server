@@ -120,7 +120,7 @@
       </div>
 
       <!-- 分类管理 -->
-      <div style="margin-top:24px;background:#fff;border-radius:16px;border:1px solid #eee;padding:24px;">
+      <div style="margin-top:24px;background:#fff;border-radius:16px;border:1px solid #eee;padding:16px;">
         <div class="panel-header">
           <h2>分类管理</h2>
           <span class="panel-sub">添加或删除商品分类</span>
@@ -226,6 +226,11 @@
       </div>
       <div class="modal-body" id="order-modal-body">
         <!-- JS 注入 -->
+      </div>
+      <div id="order-deliver-section" style="display:none;padding:16px;border-top:1px solid #f0f0f3;">
+        <label style="font-size:13px;font-weight:700;color:#1a1a1a;display:block;margin-bottom:8px;">🔑 输入卡密（多个用换行分隔）</label>
+        <textarea id="deliver-card-keys" placeholder="在此输入卡密..." rows="4" style="width:100%;padding:12px;border:1.5px solid #e0e0e6;border-radius:10px;font-size:14px;font-family:monospace;resize:none;outline:none;"></textarea>
+        <button class="btn-primary" style="width:100%;margin-top:12px;" onclick="deliverCardKeys()">交付卡密</button>
       </div>
       <div class="modal-footer" id="order-modal-footer">
         <!-- JS 注入 -->
