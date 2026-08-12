@@ -298,8 +298,12 @@ function addFromDetail() {
   if (currentDetailProduct.stock <= 0) return;
 
   const qtyToAdd = Math.min(currentQty, currentDetailProduct.stock);
-  flyToCart(detailAddBtn, currentDetailProduct);
+
+  // 先加数据并显示购物车栏
   addCartData(currentDetailProduct.id, qtyToAdd);
+
+  // 飞入动画
+  flyToCart(detailAddBtn, currentDetailProduct);
 
   // 通知服务器扣减库存
   api(`/products/${currentDetailProduct.id}/stock`, {
@@ -313,7 +317,7 @@ function addFromDetail() {
   detailAddBtn.style.background = '#34c759';
   setTimeout(() => { detailAddBtn.style.background = '#FFD60A'; }, 300);
 
-  showToast(`已加入购物车 ${qtyToAdd} 件`);
+  showToast(`已加入购物车 ${qtyToAdd} 件，点击下方查看`);
 }
 
 /* ========================================
@@ -323,8 +327,11 @@ function addToCart(id, btnEl) {
   const product = products.find(p => p.id === id);
   if (!product || product.stock <= 0) return;
 
-  flyToCart(btnEl, product);
+  // 先加数据并显示购物车栏（确保飞入动画目标位置正确）
   addCartData(id, 1);
+
+  // 飞入动画
+  flyToCart(btnEl, product);
 
   // 通知服务器扣减库存
   api(`/products/${id}/stock`, {
@@ -344,6 +351,9 @@ function addToCart(id, btnEl) {
     btnEl.classList.remove('success');
     svg.innerHTML = origHTML;
   }, 600);
+
+  // 引导提示
+  showToast('已加入购物车，点击下方查看');
 
   if (product.stock <= 0 || product.stock <= 10) {
     setTimeout(() => renderProductGrid(), 650);

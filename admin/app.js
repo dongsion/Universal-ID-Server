@@ -744,24 +744,37 @@ document.getElementById('login-user').addEventListener('keydown', function(e) {
 });
 
 /* ========================================
-   侧边栏折叠
+   侧边栏折叠（完全隐藏）
    ======================================== */
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
+const sidebarShowBtn = document.getElementById('sidebar-show-btn');
 const mainContent = document.querySelector('.main-content');
 const SIDEBAR_KEY = 'uid_sidebar_collapsed';
 
+function applySidebarState(collapsed) {
+  if (collapsed) {
+    sidebar.classList.add('collapsed');
+    mainContent.classList.add('expanded');
+    sidebarShowBtn.classList.remove('hidden');
+  } else {
+    sidebar.classList.remove('collapsed');
+    mainContent.classList.remove('expanded');
+    sidebarShowBtn.classList.add('hidden');
+  }
+  localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+}
+
 if (localStorage.getItem(SIDEBAR_KEY) === '1') {
-  sidebar.classList.add('collapsed');
-  mainContent.classList.add('expanded');
-  sidebarToggle.querySelector('svg').style.transform = 'rotate(-90deg)';
+  applySidebarState(true);
 }
 
 sidebarToggle.addEventListener('click', () => {
-  const collapsed = sidebar.classList.toggle('collapsed');
-  mainContent.classList.toggle('expanded', collapsed);
-  sidebarToggle.querySelector('svg').style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
-  localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+  applySidebarState(true);
+});
+
+sidebarShowBtn.addEventListener('click', () => {
+  applySidebarState(false);
 });
 
 /* ========================================
