@@ -159,6 +159,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
    ======================================== */
 function renderDashboard() {
   const totalProducts = products.length;
+  const activeProducts = products.filter(p => p.active !== 0).length;
   const totalStock = products.reduce((s, p) => s + (p.stock || 0), 0);
   const stockValue = products.reduce((s, p) => s + (p.price * (p.stock || 0)), 0);
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
@@ -168,7 +169,7 @@ function renderDashboard() {
     <div class="stat-card">
       <div class="stat-card-header"><div class="stat-icon purple">📦</div></div>
       <div class="stat-label">商品总数</div>
-      <div class="stat-value">${totalProducts}</div>
+      <div class="stat-value">${totalProducts}（上架 ${activeProducts}）</div>
       <div class="stat-trend">总库存 ${totalStock} 件</div>
     </div>
     <div class="stat-card">
@@ -250,11 +251,12 @@ function renderProductTable() {
   productTbody.innerHTML = products.map(p => {
     const soldOut = p.stock <= 0;
     const lowStock = p.stock > 0 && p.stock <= 10;
-    const statusClass = soldOut ? 'out-stock' : lowStock ? 'low-stock' : 'in-stock';
-    const statusText = soldOut ? '已售罄' : lowStock ? '库存不足' : '有货';
+    const isActive = p.active !== 0;
+    const statusClass = !isActive ? 'out-stock' : soldOut ? 'out-stock' : lowStock ? 'low-stock' : 'in-stock';
+    const statusText = !isActive ? '已下架' : soldOut ? '已售罄' : lowStock ? '库存不足' : '有货';
 
     return `
-      <tr>
+      <tr style="${!isActive ? 'opacity:0.5;' : ''}">
         <td>
           <div class="cell-product">
             <div class="cell-product-img" style="background:${p.bg || '#f0f0f3'}">
@@ -283,6 +285,12 @@ function renderProductTable() {
         </td>
         <td>
           <div class="cell-actions">
+            <button class="action-btn ${isActive ? 'edit' : 'edit'}" onclick="toggleProduct(${p.id})" title="${isActive ? '下架' : '上架'}" style="${!isActive ? 'background:#E8F8EE;color:#1a8a4e;' : 'background:#FFF8E0;color:#b8860b;'}">
+              ${isActive 
+                ? '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 7l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M7 2v0M7 12v0" stroke="currentColor" stroke-width="2"/></svg>'
+                : '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 2v0M7 12v0" stroke="currentColor" stroke-width="2"/></svg>'
+              }
+            </button>
             <button class="action-btn edit" onclick="editProductForm(${p.id})" title="编辑">
               <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2l2 2-7 7H3V9l7-7z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/></svg>
             </button>
@@ -294,6 +302,17 @@ function renderProductTable() {
       </tr>
     `;
   }).join('');
+}
+
+async function toggleProduct(id) {
+  const product = products.find(p => p.id === id);
+  if (!product) return;
+  const result = await api(`/products/${id}/toggle`, { method: 'PATCH' });
+  if (result) {
+    product.active = result.active;
+    renderProductTable();
+    showToast(`${product.name} 已${result.active ? '上架' : '下架'}`);
+  }
 }
 
 async function adjustStock(id, delta) {

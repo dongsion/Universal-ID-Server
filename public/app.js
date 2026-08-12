@@ -181,9 +181,11 @@ function thumbImageHTML(product) {
    渲染产品网格
    ======================================== */
 function renderProductGrid() {
+  /* 只显示上架商品 */
+  const visibleProducts = products.filter(p => p.active !== 0);
   const filtered = currentFilter === 'All'
-    ? products
-    : products.filter(p => p.cat === currentFilter);
+    ? visibleProducts
+    : visibleProducts.filter(p => p.cat === currentFilter);
 
   itemCount.textContent = `${filtered.length} 件`;
   collectionTitle.textContent = currentFilter === 'All'
@@ -463,7 +465,7 @@ function updateCartBar() {
 }
 
 /* ========================================
-   渲染购物车页
+   渲染购物车页（含增减数量 & 删除）
    ======================================== */
 function renderCartBody() {
   if (cart.length === 0) {
@@ -471,11 +473,15 @@ function renderCartBody() {
       <div style="text-align:center;padding:60px 0;color:#666">
         <p style="font-size:16px;font-weight:600;color:#fff">购物车是空的</p>
         <p style="font-size:13px;color:#888;margin-top:8px">去挑选商品吧！</p>
+        <button class="checkout-btn" style="margin-top:20px;" onclick="showPage('browse')">
+          <span>去购物</span>
+        </button>
       </div>
     `;
     return;
   }
 
+  const totalItems = cart.reduce((s, c) => s + c.qty, 0);
   const itemsHTML = cart.map((c, i) => `
     <div class="cart-item" style="animation-delay:${0.05 + i * 0.07}s">
       <div class="cart-item-img" style="background:${c.bg || '#f0f0f3'}">
@@ -484,8 +490,19 @@ function renderCartBody() {
           : productImageHTML(c)}
       </div>
       <div class="cart-item-info">
-        <div class="cart-item-name">${c.name}</div>
-        <div class="cart-item-sub">${c.brand || ''} · 数量 ${c.qty}</div>
+        <div class="cart-item-info-row">
+          <div>
+            <div class="cart-item-name">${c.name}</div>
+            <div class="cart-item-sub">${c.brand || ''}</div>
+          </div>
+          <button class="cart-item-delete" onclick="removeCartItem(${c.id})" title="删除">×</button>
+        </div>
+        <div class="cart-item-controls">
+          <button class="cart-qty-btn" onclick="cartQtyChange(${c.id}, -1)">−</button>
+          <span class="cart-qty-display">${c.qty}</span>
+          <button class="cart-qty-btn" onclick="cartQtyChange(${c.id}, 1)">+</button>
+          <span class="cart-count-badge">$${String(c.price).padStart(2, '0')}.00 / 件</span>
+        </div>
       </div>
       <div class="cart-item-price">$${String(c.price * c.qty).padStart(2, '0')}.00</div>
     </div>
@@ -496,12 +513,12 @@ function renderCartBody() {
   cartBody.innerHTML = `
     ${itemsHTML}
     <div class="cart-summary">
-      <div class="cart-summary-label">配送费</div>
+      <div class="cart-summary-label">共 ${totalItems} 件商品</div>
       <div class="cart-summary-total-label">合计</div>
       <div class="cart-summary-amount">USD $${String(total).padStart(2, '0')}.00</div>
     </div>
     <button class="checkout-btn" onclick="checkout()">
-      <span>立即支付</span>
+      <span>立即支付 $${String(total).padStart(2, '0')}.00</span>
       <div class="checkout-arrow">
         <svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 8h7M8 5l3 3-3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
       </div>
@@ -509,10 +526,140 @@ function renderCartBody() {
   `;
 }
 
+/* 购物车数量增减 */
+function cartQtyChange(id, delta) {
+  const item = cart.find(c => c.id === id);
+  if (!item) return;
+  if (delta > 0) {
+    const product = products.find(p => p.id === id);
+    if (product && item.qty >= product.stock) {
+      showToast(`库存仅剩 ${product.stock} 件`);
+      return;
+    }
+    item.qty++;
+  } else {
+    if (item.qty > 1) {
+      item.qty--;
+    } else {
+      removeCartItem(id);
+      return;
+    }
+  }
+  saveCart();
+  updateCartBar();
+  renderCartBody();
+}
+
+/* 删除购物车商品 */
+function removeCartItem(id) {
+  cart = cart.filter(c => c.id !== id);
+  saveCart();
+  updateCartBar();
+  renderCartBody();
+  showToast('已从购物车移除');
+}
+
+/* ========================================
+   订单历史（localStorage）
+   ======================================== */
+const ORDERS_KEY = 'universal_id_orders';
+
+function loadOrderHistory() {
+  const saved = localStorage.getItem(ORDERS_KEY);
+  if (saved) {
+    try { return JSON.parse(saved); } catch (e) { return []; }
+  }
+  return [];
+}
+
+function saveOrderHistory(orders) {
+  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+}
+
+function addOrderToHistory(order) {
+  const history = loadOrderHistory();
+  history.unshift(order);
+  if (history.length > 50) history.length = 50;
+  saveOrderHistory(history);
+}
+
+/* 渲染订单记录页 */
+function renderOrdersList() {
+  const ordersList = document.getElementById('orders-list');
+  const history = loadOrderHistory();
+
+  if (history.length === 0) {
+    ordersList.innerHTML = `
+      <div class="orders-empty">
+        <div style="font-size:40px;margin-bottom:12px;">📋</div>
+        <p style="font-size:15px;font-weight:600;color:#666;">暂无订单</p>
+        <p style="font-size:13px;color:#999;margin-top:4px;">下单后可以在这里查看订单记录</p>
+        <button class="empty-btn" onclick="showPage('browse')" style="margin-top:20px;">去购物</button>
+      </div>
+    `;
+    return;
+  }
+
+  const statusNames = {
+    'pending': '待处理',
+    'completed': '已完成',
+    'cancelled': '已取消'
+  };
+
+  ordersList.innerHTML = history.map(o => `
+    <div class="order-record">
+      <div class="order-record-top">
+        <div>
+          <div class="order-record-id">${o.id}</div>
+          <div class="order-record-time">${formatOrderDate(o.created_at)}</div>
+        </div>
+        <span class="order-record-status ${o.status}">${statusNames[o.status] || o.status}</span>
+      </div>
+      <div class="order-record-items">
+        ${(o.items || []).map(i => `
+          <span class="order-record-item">${i.name} ×${i.qty}</span>
+        `).join('')}
+      </div>
+      <div class="order-record-total">
+        <span class="order-record-total-label">合计</span>
+        <span class="order-record-total-value">$${Number(o.total).toFixed(2)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function formatOrderDate(iso) {
+  const d = new Date(iso + (iso && iso.endsWith('Z') ? '' : 'Z'));
+  return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+/* 渲染订单成功页 */
+function renderSuccessPage(order) {
+  document.getElementById('success-order-id').textContent = `订单号：${order.id}`;
+
+  const itemsHTML = (order.items || []).map(i => `
+    <div class="success-order-item">
+      <div class="success-order-item-name">${i.name}</div>
+      <div class="success-order-item-qty">×${i.qty}</div>
+      <div class="success-order-item-price">$${(i.price * i.qty).toFixed(2)}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('success-body').innerHTML = `
+    ${itemsHTML}
+    <div class="success-total">
+      <span class="success-total-label">支付金额</span>
+      <span class="success-total-amount">$${Number(order.total).toFixed(2)}</span>
+    </div>
+  `;
+}
+
 /* ========================================
    结算 - 发送订单到服务器
    ======================================== */
 async function checkout() {
+  if (cart.length === 0) return;
+
   const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
   const items = cart.map(c => ({
     id: c.id,
@@ -531,33 +678,55 @@ async function checkout() {
   });
 
   if (order) {
-    showToast('支付成功！🎉');
+    /* 保存到本地订单记录 */
+    addOrderToHistory(order);
+
+    /* 清空购物车 */
     cart = [];
     saveCart();
     updateCartBar();
     cartBar.classList.add('hidden');
-    setTimeout(() => showPage('browse'), 500);
+
+    /* 渲染成功页并跳转 */
+    renderSuccessPage(order);
+    showPage('success');
+    showToast('支付成功！');
   }
 }
 
 /* ========================================
    页面切换
    ======================================== */
+const pageSuccess = document.getElementById('page-success');
+const pageOrders = document.getElementById('page-orders');
+
 function showPage(target) {
+  /* 先关闭所有页面 */
+  pageBrowse.classList.remove('slide-out-left');
+  pageDetail.classList.remove('detail-active');
+  pageCart.classList.remove('cart-active');
+  pageSuccess.classList.remove('success-active');
+  pageOrders.classList.remove('orders-active');
+
   if (target === 'browse') {
-    pageBrowse.classList.remove('slide-out-left');
-    pageDetail.classList.remove('detail-active');
-    pageCart.classList.remove('cart-active');
     renderProductGrid();
     if (cart.length > 0) {
       cartBar.classList.remove('hidden');
     }
   } else if (target === 'cart') {
     pageBrowse.classList.add('slide-out-left');
-    pageDetail.classList.remove('detail-active');
     pageCart.classList.add('cart-active');
     cartBar.classList.add('hidden');
     renderCartBody();
+  } else if (target === 'success') {
+    pageBrowse.classList.add('slide-out-left');
+    pageSuccess.classList.add('success-active');
+    cartBar.classList.add('hidden');
+  } else if (target === 'orders') {
+    pageBrowse.classList.add('slide-out-left');
+    pageOrders.classList.add('orders-active');
+    cartBar.classList.add('hidden');
+    renderOrdersList();
   }
 }
 
