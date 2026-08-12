@@ -1,40 +1,55 @@
 /* ========================================
    Universal ID（客户端）
-   后端版：API + WebSocket 实时同步
+   完整购物流程：浏览→详情→购物车→确认订单→支付成功→订单记录
    ======================================== */
 
-/* ---- 服务器地址（前端由同一服务器托管，使用相对路径） ---- */
 const API_BASE = '/api/uid';
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 
-/* ---- 分类（从服务器动态加载） ---- */
-let categories = [];
-
 /* ---- 状态 ---- */
+let categories = [];
 let products = [];
 let cart = [];
 let currentDetailProduct = null;
 let currentQty = 1;
-let editingProductId = null;
-let uploadedImage = null;
-let selectedColor = '#FFF3D6';
 let currentFilter = 'All';
+let searchKeyword = '';
+let cartEditMode = false;
+let buyNowItem = null; /* 立即购买临时商品 */
+const selectedItems = new Set(); /* 购物车选中项 */
 
-/* ---- 购物车仍用 localStorage（临时购物车，不需要跨设备） ---- */
+/* ---- localStorage ---- */
 const CART_KEY = 'universal_id_cart';
+const ORDERS_KEY = 'universal_id_orders';
+const ADDRESS_KEY = 'universal_id_address';
 
 function loadCart() {
   const saved = localStorage.getItem(CART_KEY);
-  if (saved) {
-    try { cart = JSON.parse(saved); } catch (e) { cart = []; }
-  }
+  if (saved) { try { cart = JSON.parse(saved); } catch (e) { cart = []; } }
+}
+function saveCart() { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+
+function loadOrderHistory() {
+  const saved = localStorage.getItem(ORDERS_KEY);
+  if (saved) { try { return JSON.parse(saved); } catch (e) { return []; } }
+  return [];
+}
+function saveOrderHistory(orders) { localStorage.setItem(ORDERS_KEY, JSON.stringify(orders)); }
+function addOrderToHistory(order) {
+  const history = loadOrderHistory();
+  history.unshift(order);
+  if (history.length > 50) history.length = 50;
+  saveOrderHistory(history);
 }
 
-function saveCart() {
-  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+function loadAddress() {
+  const saved = localStorage.getItem(ADDRESS_KEY);
+  if (saved) { try { return JSON.parse(saved); } catch (e) {} }
+  return {};
 }
+function saveAddress(addr) { localStorage.setItem(ADDRESS_KEY, JSON.stringify(addr)); }
 
-/* ---- API 请求封装 ---- */
+/* ---- API ---- */
 async function api(path, options = {}) {
   try {
     const res = await fetch(API_BASE + path, {
@@ -53,72 +68,38 @@ async function api(path, options = {}) {
   }
 }
 
-/* ---- 从服务器加载商品 ---- */
-async function loadProducts() {
-  const data = await api('/products');
-  if (data) {
-    products = data;
-    renderProductGrid();
-    if (manageOverlay.classList.contains('active')) renderManageList();
-  }
-}
-
-/* ---- WebSocket 实时更新 ---- */
+/* ---- WebSocket ---- */
 let ws = null;
-let wsReconnectTimer = null;
-
 function connectWS() {
   try {
     ws = new WebSocket(WS_URL);
-
-    ws.onopen = () => {
-      console.log('WebSocket 已连接');
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      handleWSMessage(msg);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket 断开，5秒后重连');
-      wsReconnectTimer = setTimeout(connectWS, 5000);
-    };
-
-    ws.onerror = () => {
-      ws.close();
-    };
-  } catch (e) {
-    console.error('WebSocket 连接失败:', e);
-  }
+    ws.onopen = () => console.log('WebSocket 已连接');
+    ws.onmessage = (event) => handleWSMessage(JSON.parse(event.data));
+    ws.onclose = () => setTimeout(connectWS, 5000);
+    ws.onerror = () => ws.close();
+  } catch (e) { console.error('WebSocket 连接失败:', e); }
 }
 
 function handleWSMessage(msg) {
   const { type, data } = msg;
-
   if (type === 'product_updated' || type === 'product_added') {
     const idx = products.findIndex(p => p.id === data.id);
-    if (idx >= 0) {
-      products[idx] = data;
-    } else {
-      products.push(data);
-    }
+    if (idx >= 0) products[idx] = data; else products.push(data);
     renderProductGrid();
-    if (manageOverlay.classList.contains('active')) renderManageList();
   } else if (type === 'product_deleted') {
     products = products.filter(p => p.id !== data.id);
     cart = cart.filter(c => c.id !== data.id);
+    selectedItems.delete(data.id);
     saveCart();
     renderProductGrid();
     updateCartBar();
-    if (manageOverlay.classList.contains('active')) renderManageList();
   }
 }
 
-/* ---- DOM 引用 ---- */
+/* ---- DOM ---- */
 const app = document.getElementById('app');
 const productGrid = document.getElementById('product-grid');
-const filterRow = document.querySelector('.filter-row');
+const filterRow = document.getElementById('filter-row');
 const emptyState = document.getElementById('empty-state');
 const itemCount = document.getElementById('item-count');
 const collectionTitle = document.getElementById('collection-title');
@@ -130,33 +111,22 @@ const flyClone = document.getElementById('fly-clone');
 const pageBrowse = document.getElementById('page-browse');
 const pageDetail = document.getElementById('page-detail');
 const pageCart = document.getElementById('page-cart');
+const pageSuccess = document.getElementById('page-success');
+const pageOrders = document.getElementById('page-orders');
+const pageCheckout = document.getElementById('page-checkout');
 const detailContent = document.getElementById('detail-content');
 const qtyNumber = document.getElementById('qty-number');
 const detailPrice = document.getElementById('detail-price');
-const detailAddBtn = document.getElementById('detail-add-btn');
+const detailCartBtn = document.getElementById('detail-cart-btn');
+const detailBuyBtn = document.getElementById('detail-buy-btn');
 const cartBadgeTop = document.getElementById('cart-badge-top');
 const cartBody = document.getElementById('cart-body');
+const cartFooter = document.getElementById('cart-footer');
 const toast = document.getElementById('toast');
-
-/* 管理面板 DOM */
-const manageOverlay = document.getElementById('manage-overlay');
-const manageList = document.getElementById('manage-list');
-const manageCount = document.getElementById('manage-count');
-const manageFormSection = document.getElementById('manage-form-section');
-const formTitle = document.getElementById('form-title');
-const imageInput = document.getElementById('image-input');
-const uploadPreview = document.getElementById('upload-preview');
-const uploadPlaceholder = document.getElementById('upload-placeholder');
-const formName = document.getElementById('form-name');
-const formBrand = document.getElementById('form-brand');
-const formPrice = document.getElementById('form-price');
-const formStock = document.getElementById('form-stock');
-const formCategory = document.getElementById('form-category');
-const colorPicker = document.getElementById('color-picker');
-const formSaveBtn = document.getElementById('form-save-btn');
+const searchInput = document.getElementById('search-input');
 
 /* ========================================
-   生成商品图 HTML
+   商品图片 HTML
    ======================================== */
 function productImageHTML(product) {
   if (product.image) {
@@ -178,19 +148,30 @@ function thumbImageHTML(product) {
 }
 
 /* ========================================
-   渲染产品网格
+   渲染商品列表
    ======================================== */
+async function loadProducts() {
+  const data = await api('/products');
+  if (data) { products = data; renderProductGrid(); }
+}
+
 function renderProductGrid() {
-  /* 只显示上架商品 */
   const visibleProducts = products.filter(p => p.active !== 0);
-  const filtered = currentFilter === 'All'
+  let filtered = currentFilter === 'All'
     ? visibleProducts
     : visibleProducts.filter(p => p.cat === currentFilter);
 
+  if (searchKeyword) {
+    filtered = filtered.filter(p =>
+      (p.name || '').toLowerCase().includes(searchKeyword) ||
+      (p.brand || '').toLowerCase().includes(searchKeyword)
+    );
+  }
+
   itemCount.textContent = `${filtered.length} 件`;
-  collectionTitle.textContent = currentFilter === 'All'
-    ? '全部商品'
-    : `${currentFilter}商品`;
+  collectionTitle.textContent = searchKeyword
+    ? `搜索"${searchKeyword}"`
+    : currentFilter === 'All' ? '全部商品' : `${currentFilter}商品`;
 
   if (filtered.length === 0) {
     productGrid.style.display = 'none';
@@ -223,7 +204,19 @@ function renderProductGrid() {
 }
 
 /* ========================================
-   打开详情页
+   搜索
+   ======================================== */
+let searchTimer = null;
+searchInput.addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchKeyword = this.value.trim().toLowerCase();
+    renderProductGrid();
+  }, 300);
+});
+
+/* ========================================
+   商品详情页
    ======================================== */
 function openDetail(id) {
   const product = products.find(p => p.id === id);
@@ -261,20 +254,17 @@ function openDetail(id) {
   detailPrice.textContent = `$${String(product.price).padStart(2, '0')}.00`;
 
   if (soldOut) {
-    detailAddBtn.style.opacity = '0.4';
-    detailAddBtn.style.pointerEvents = 'none';
+    detailCartBtn.disabled = true;
+    detailBuyBtn.disabled = true;
   } else {
-    detailAddBtn.style.opacity = '1';
-    detailAddBtn.style.pointerEvents = 'auto';
+    detailCartBtn.disabled = false;
+    detailBuyBtn.disabled = false;
   }
 
   pageBrowse.classList.add('slide-out-left');
   pageDetail.classList.add('detail-active');
 }
 
-/* ========================================
-   数量选择
-   ======================================== */
 function changeQty(delta) {
   if (!currentDetailProduct) return;
   const maxQty = currentDetailProduct.stock;
@@ -293,77 +283,51 @@ function changeQty(delta) {
 }
 
 /* ========================================
-   从详情页加购
+   加入购物车
    ======================================== */
 function addFromDetail() {
-  if (!currentDetailProduct) return;
-  if (currentDetailProduct.stock <= 0) return;
-
+  if (!currentDetailProduct || currentDetailProduct.stock <= 0) return;
   const qtyToAdd = Math.min(currentQty, currentDetailProduct.stock);
-
-  // 先加数据并显示购物车栏
   addCartData(currentDetailProduct.id, qtyToAdd);
-
-  // 飞入动画
-  flyToCart(detailAddBtn, currentDetailProduct);
-
-  // 通知服务器扣减库存
-  api(`/products/${currentDetailProduct.id}/stock`, {
-    method: 'PATCH',
-    body: JSON.stringify({ stock: -qtyToAdd })
-  });
-
-  // 本地先扣减
-  currentDetailProduct.stock -= qtyToAdd;
-
-  detailAddBtn.style.background = '#34c759';
-  setTimeout(() => { detailAddBtn.style.background = '#FFD60A'; }, 300);
-
-  showToast(`已加入购物车 ${qtyToAdd} 件，点击下方查看`);
+  flyToCart(detailCartBtn, currentDetailProduct);
+  showToast(`已加入购物车 ${qtyToAdd} 件`);
 }
 
-/* ========================================
-   从浏览页加购
-   ======================================== */
 function addToCart(id, btnEl) {
   const product = products.find(p => p.id === id);
   if (!product || product.stock <= 0) return;
-
-  // 先加数据并显示购物车栏（确保飞入动画目标位置正确）
   addCartData(id, 1);
-
-  // 飞入动画
   flyToCart(btnEl, product);
-
-  // 通知服务器扣减库存
-  api(`/products/${id}/stock`, {
-    method: 'PATCH',
-    body: JSON.stringify({ stock: -1 })
-  });
-
-  // 本地先扣减
   product.stock -= 1;
-
-  // 按钮反馈
-  btnEl.classList.add('success');
-  const svg = btnEl.querySelector('svg');
-  const origHTML = svg.innerHTML;
-  svg.innerHTML = '<path d="M3 8l3.5 3.5L13 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
-  setTimeout(() => {
-    btnEl.classList.remove('success');
-    svg.innerHTML = origHTML;
-  }, 600);
-
-  // 引导提示
-  showToast('已加入购物车，点击下方查看');
-
+  showToast('已加入购物车');
   if (product.stock <= 0 || product.stock <= 10) {
     setTimeout(() => renderProductGrid(), 650);
   }
 }
 
 /* ========================================
-   核心动效: 商品飞入购物车
+   立即购买
+   ======================================== */
+function buyNow() {
+  if (!currentDetailProduct || currentDetailProduct.stock <= 0) return;
+  const qtyToAdd = Math.min(currentQty, currentDetailProduct.stock);
+  buyNowItem = {
+    id: currentDetailProduct.id,
+    name: currentDetailProduct.name,
+    brand: currentDetailProduct.brand,
+    price: currentDetailProduct.price,
+    qty: qtyToAdd,
+    image: currentDetailProduct.image,
+    bg: currentDetailProduct.bg,
+    bagBg: currentDetailProduct.bagBg,
+    bagText: currentDetailProduct.bagText,
+    bagSub: currentDetailProduct.bagSub,
+  };
+  goToCheckoutPage(true);
+}
+
+/* ========================================
+   飞入动画
    ======================================== */
 function flyToCart(fromEl, product) {
   const fromRect = fromEl.getBoundingClientRect();
@@ -394,11 +358,9 @@ function flyToCart(fromEl, product) {
     const y = Math.pow(1 - eased, 2) * startY + 2 * (1 - eased) * eased * ctrlY + Math.pow(eased, 2) * endY;
     const scale = 1 - eased * 0.6;
     const rotate = eased * 180;
-
     flyClone.style.left = x + 'px';
     flyClone.style.top = y + 'px';
     flyClone.style.transform = `scale(${scale}) rotate(${rotate}deg)`;
-
     if (t < 1) {
       requestAnimationFrame(animate);
     } else {
@@ -414,28 +376,22 @@ function flyToCart(fromEl, product) {
 }
 
 /* ========================================
-   购物车数据管理
+   购物车数据
    ======================================== */
 function addCartData(id, qty) {
   const product = products.find(p => p.id === id);
   if (!product) return;
-
   const existing = cart.find(c => c.id === id);
   if (existing) {
     existing.qty += qty;
   } else {
     cart.push({
-      id: product.id,
-      name: product.name,
-      brand: product.brand,
-      price: product.price,
-      bg: product.bg,
-      bagBg: product.bagBg,
-      bagText: product.bagText,
-      bagSub: product.bagSub,
-      image: product.image,
-      qty: qty
+      id: product.id, name: product.name, brand: product.brand,
+      price: product.price, bg: product.bg, bagBg: product.bagBg,
+      bagText: product.bagText, bagSub: product.bagSub,
+      image: product.image, qty: qty
     });
+    selectedItems.add(id);
   }
   saveCart();
   updateCartBar();
@@ -446,26 +402,16 @@ function updateCartBar() {
   cartBarBadge.textContent = totalItems;
   cartBarSub.textContent = totalItems === 1 ? '1 件' : `${totalItems} 件`;
   cartBadgeTop.textContent = totalItems;
-
-  if (totalItems > 0) {
-    cartBar.classList.remove('hidden');
-  } else {
-    cartBar.classList.add('hidden');
-  }
-
+  if (totalItems > 0) { cartBar.classList.remove('hidden'); }
+  else { cartBar.classList.add('hidden'); }
   cartBarThumbs.innerHTML = cart.slice(0, 3).map(c =>
-    `<div class="cart-thumb" style="background:${c.bg || '#f0f0f3'}">
-      ${thumbImageHTML(c)}
-    </div>`
+    `<div class="cart-thumb" style="background:${c.bg || '#f0f0f3'}">${thumbImageHTML(c)}</div>`
   ).join('');
-
-  if (pageCart.classList.contains('cart-active')) {
-    renderCartBody();
-  }
+  if (pageCart.classList.contains('cart-active')) renderCartBody();
 }
 
 /* ========================================
-   渲染购物车页（含增减数量 & 删除）
+   购物车页
    ======================================== */
 function renderCartBody() {
   if (cart.length === 0) {
@@ -473,21 +419,19 @@ function renderCartBody() {
       <div style="text-align:center;padding:60px 0;color:#666">
         <p style="font-size:16px;font-weight:600;color:#fff">购物车是空的</p>
         <p style="font-size:13px;color:#888;margin-top:8px">去挑选商品吧！</p>
-        <button class="checkout-btn" style="margin-top:20px;" onclick="showPage('browse')">
-          <span>去购物</span>
-        </button>
+        <button class="checkout-btn" style="margin-top:20px;" onclick="showPage('browse')"><span>去购物</span></button>
       </div>
     `;
+    cartFooter.style.display = 'none';
     return;
   }
 
-  const totalItems = cart.reduce((s, c) => s + c.qty, 0);
+  cartFooter.style.display = 'flex';
   const itemsHTML = cart.map((c, i) => `
     <div class="cart-item" style="animation-delay:${0.05 + i * 0.07}s">
+      <div class="cart-item-check ${selectedItems.has(c.id) ? 'checked' : ''}" onclick="toggleSelectItem(${c.id})"></div>
       <div class="cart-item-img" style="background:${c.bg || '#f0f0f3'}">
-        ${c.image
-          ? `<img src="${c.image}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
-          : productImageHTML(c)}
+        ${c.image ? `<img src="${c.image}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : productImageHTML(c)}
       </div>
       <div class="cart-item-info">
         <div class="cart-item-info-row">
@@ -495,7 +439,7 @@ function renderCartBody() {
             <div class="cart-item-name">${c.name}</div>
             <div class="cart-item-sub">${c.brand || ''}</div>
           </div>
-          <button class="cart-item-delete" onclick="removeCartItem(${c.id})" title="删除">×</button>
+          <button class="cart-item-delete" onclick="removeCartItem(${c.id})">×</button>
         </div>
         <div class="cart-item-controls">
           <button class="cart-qty-btn" onclick="cartQtyChange(${c.id}, -1)">−</button>
@@ -509,24 +453,49 @@ function renderCartBody() {
   `).join('');
 
   const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
-
-  cartBody.innerHTML = `
-    ${itemsHTML}
-    <div class="cart-summary">
-      <div class="cart-summary-label">共 ${totalItems} 件商品</div>
-      <div class="cart-summary-total-label">合计</div>
-      <div class="cart-summary-amount">USD $${String(total).padStart(2, '0')}.00</div>
-    </div>
-    <button class="checkout-btn" onclick="checkout()">
-      <span>立即支付 $${String(total).padStart(2, '0')}.00</span>
-      <div class="checkout-arrow">
-        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 8h7M8 5l3 3-3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-      </div>
-    </button>
-  `;
+  cartBody.innerHTML = itemsHTML;
+  updateCartFooter();
 }
 
-/* 购物车数量增减 */
+function updateCartFooter() {
+  const selected = cart.filter(c => selectedItems.has(c.id));
+  const total = selected.reduce((s, c) => s + c.price * c.qty, 0);
+  const count = selected.reduce((s, c) => s + c.qty, 0);
+  document.getElementById('cart-footer-amount').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('cart-selected-count').textContent = count;
+  const checkoutBtn = document.getElementById('cart-checkout-btn');
+  checkoutBtn.disabled = count === 0;
+
+  /* 更新全选状态 */
+  const allSelected = cart.length > 0 && cart.every(c => selectedItems.has(c.id));
+  const selectAllCircle = document.getElementById('select-all-circle');
+  if (allSelected) selectAllCircle.classList.add('checked');
+  else selectAllCircle.classList.remove('checked');
+}
+
+function toggleSelectItem(id) {
+  if (selectedItems.has(id)) selectedItems.delete(id);
+  else selectedItems.add(id);
+  renderCartBody();
+}
+
+function toggleSelectAll() {
+  const allSelected = cart.length > 0 && cart.every(c => selectedItems.has(c.id));
+  if (allSelected) {
+    cart.forEach(c => selectedItems.delete(c.id));
+  } else {
+    cart.forEach(c => selectedItems.add(c.id));
+  }
+  renderCartBody();
+}
+
+function toggleCartEditMode() {
+  cartEditMode = !cartEditMode;
+  const btn = document.getElementById('cart-edit-btn');
+  btn.textContent = cartEditMode ? '完成' : '管理';
+  renderCartBody();
+}
+
 function cartQtyChange(id, delta) {
   const item = cart.find(c => c.id === id);
   if (!item) return;
@@ -538,52 +507,144 @@ function cartQtyChange(id, delta) {
     }
     item.qty++;
   } else {
-    if (item.qty > 1) {
-      item.qty--;
-    } else {
-      removeCartItem(id);
-      return;
-    }
+    if (item.qty > 1) item.qty--;
+    else { removeCartItem(id); return; }
   }
   saveCart();
   updateCartBar();
   renderCartBody();
 }
 
-/* 删除购物车商品 */
 function removeCartItem(id) {
   cart = cart.filter(c => c.id !== id);
+  selectedItems.delete(id);
   saveCart();
   updateCartBar();
   renderCartBody();
-  showToast('已从购物车移除');
+  showToast('已移除');
 }
 
 /* ========================================
-   订单历史（localStorage）
+   去结算 → 订单确认页
    ======================================== */
-const ORDERS_KEY = 'universal_id_orders';
-
-function loadOrderHistory() {
-  const saved = localStorage.getItem(ORDERS_KEY);
-  if (saved) {
-    try { return JSON.parse(saved); } catch (e) { return []; }
+function goToCheckout() {
+  const selected = cart.filter(c => selectedItems.has(c.id));
+  if (selected.length === 0) {
+    showToast('请选择要结算的商品');
+    return;
   }
-  return [];
+  goToCheckoutPage(false);
 }
 
-function saveOrderHistory(orders) {
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+function goToCheckoutPage(isBuyNow) {
+  const items = isBuyNow ? [buyNowItem] : cart.filter(c => selectedItems.has(c.id));
+  const total = items.reduce((s, c) => s + c.price * c.qty, 0);
+
+  /* 渲染商品清单 */
+  document.getElementById('checkout-items').innerHTML = items.map(c => `
+    <div class="checkout-item">
+      <div class="checkout-item-img" style="background:${c.bg || '#f0f0f3'}">
+        ${c.image ? `<img src="${c.image}">` : ''}
+      </div>
+      <div class="checkout-item-name">${c.name}</div>
+      <div class="checkout-item-qty">×${c.qty}</div>
+      <div class="checkout-item-price">$${(c.price * c.qty).toFixed(2)}</div>
+    </div>
+  `).join('');
+
+  /* 金额 */
+  document.getElementById('checkout-goods-amount').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('checkout-pay-amount').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('checkout-submit-amount').textContent = `$${total.toFixed(2)}`;
+
+  /* 自动填充已保存的收货信息 */
+  const addr = loadAddress();
+  if (addr.name) document.getElementById('checkout-name').value = addr.name;
+  if (addr.phone) document.getElementById('checkout-phone').value = addr.phone;
+  if (addr.address) document.getElementById('checkout-address').value = addr.address;
+
+  showPage('checkout');
 }
 
-function addOrderToHistory(order) {
-  const history = loadOrderHistory();
-  history.unshift(order);
-  if (history.length > 50) history.length = 50;
-  saveOrderHistory(history);
+/* ========================================
+   提交订单
+   ======================================== */
+async function submitOrder() {
+  const name = document.getElementById('checkout-name').value.trim();
+  const phone = document.getElementById('checkout-phone').value.trim();
+  const address = document.getElementById('checkout-address').value.trim();
+  const note = document.getElementById('checkout-note').value.trim();
+
+  if (!name) { showToast('请输入收货人姓名'); return; }
+  if (!phone || phone.length < 11) { showToast('请输入正确的手机号'); return; }
+  if (!address) { showToast('请输入收货地址'); return; }
+
+  /* 保存收货信息 */
+  saveAddress({ name, phone, address });
+
+  /* 获取结算商品 */
+  const isBuyNow = buyNowItem !== null;
+  const items = isBuyNow
+    ? [buyNowItem]
+    : cart.filter(c => selectedItems.has(c.id));
+
+  const total = items.reduce((s, c) => s + c.price * c.qty, 0);
+
+  showToast('正在提交订单...');
+
+  const order = await api('/orders', {
+    method: 'POST',
+    body: JSON.stringify({
+      items: items.map(c => ({ id: c.id, name: c.name, brand: c.brand, price: c.price, qty: c.qty, image: c.image })),
+      total,
+      address: { name, phone, address, note }
+    })
+  });
+
+  if (order) {
+    addOrderToHistory(order);
+
+    if (isBuyNow) {
+      buyNowItem = null;
+    } else {
+      /* 从购物车移除已结算商品 */
+      const settledIds = new Set(items.map(i => i.id));
+      cart = cart.filter(c => !settledIds.has(c.id));
+      items.forEach(i => selectedItems.delete(i.id));
+      saveCart();
+      updateCartBar();
+    }
+
+    cartBar.classList.add('hidden');
+    renderSuccessPage(order);
+    showPage('success');
+    showToast('支付成功！');
+  }
 }
 
-/* 渲染订单记录页 */
+/* ========================================
+   订单成功页
+   ======================================== */
+function renderSuccessPage(order) {
+  document.getElementById('success-order-id').textContent = `订单号：${order.id}`;
+  document.getElementById('success-body').innerHTML = `
+    ${(order.items || []).map(i => `
+      <div class="success-order-item">
+        <div class="success-order-item-name">${i.name}</div>
+        <div class="success-order-item-qty">×${i.qty}</div>
+        <div class="success-order-item-price">$${(i.price * i.qty).toFixed(2)}</div>
+      </div>
+    `).join('')}
+    <div class="success-total">
+      <span class="success-total-label">支付金额</span>
+      <span class="success-total-amount">$${Number(order.total).toFixed(2)}</span>
+    </div>
+  `;
+}
+
+/* ========================================
+   我的订单页
+   ======================================== */
 function renderOrdersList() {
   const ordersList = document.getElementById('orders-list');
   const history = loadOrderHistory();
@@ -593,19 +654,13 @@ function renderOrdersList() {
       <div class="orders-empty">
         <div style="font-size:40px;margin-bottom:12px;">📋</div>
         <p style="font-size:15px;font-weight:600;color:#666;">暂无订单</p>
-        <p style="font-size:13px;color:#999;margin-top:4px;">下单后可以在这里查看订单记录</p>
-        <button class="empty-btn" onclick="showPage('browse')" style="margin-top:20px;">去购物</button>
+        <p style="font-size:13px;color:#999;margin-top:4px;">下单后可以在这里查看</p>
       </div>
     `;
     return;
   }
 
-  const statusNames = {
-    'pending': '待处理',
-    'completed': '已完成',
-    'cancelled': '已取消'
-  };
-
+  const statusNames = { 'pending': '待处理', 'completed': '已完成', 'cancelled': '已取消' };
   ordersList.innerHTML = history.map(o => `
     <div class="order-record">
       <div class="order-record-top">
@@ -616,9 +671,7 @@ function renderOrdersList() {
         <span class="order-record-status ${o.status}">${statusNames[o.status] || o.status}</span>
       </div>
       <div class="order-record-items">
-        ${(o.items || []).map(i => `
-          <span class="order-record-item">${i.name} ×${i.qty}</span>
-        `).join('')}
+        ${(o.items || []).map(i => `<span class="order-record-item">${i.name} ×${i.qty}</span>`).join('')}
       </div>
       <div class="order-record-total">
         <span class="order-record-total-label">合计</span>
@@ -633,91 +686,29 @@ function formatOrderDate(iso) {
   return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-/* 渲染订单成功页 */
-function renderSuccessPage(order) {
-  document.getElementById('success-order-id').textContent = `订单号：${order.id}`;
-
-  const itemsHTML = (order.items || []).map(i => `
-    <div class="success-order-item">
-      <div class="success-order-item-name">${i.name}</div>
-      <div class="success-order-item-qty">×${i.qty}</div>
-      <div class="success-order-item-price">$${(i.price * i.qty).toFixed(2)}</div>
-    </div>
-  `).join('');
-
-  document.getElementById('success-body').innerHTML = `
-    ${itemsHTML}
-    <div class="success-total">
-      <span class="success-total-label">支付金额</span>
-      <span class="success-total-amount">$${Number(order.total).toFixed(2)}</span>
-    </div>
-  `;
-}
-
-/* ========================================
-   结算 - 发送订单到服务器
-   ======================================== */
-async function checkout() {
-  if (cart.length === 0) return;
-
-  const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
-  const items = cart.map(c => ({
-    id: c.id,
-    name: c.name,
-    brand: c.brand,
-    price: c.price,
-    qty: c.qty,
-    image: c.image
-  }));
-
-  showToast('正在提交订单...');
-
-  const order = await api('/orders', {
-    method: 'POST',
-    body: JSON.stringify({ items, total })
-  });
-
-  if (order) {
-    /* 保存到本地订单记录 */
-    addOrderToHistory(order);
-
-    /* 清空购物车 */
-    cart = [];
-    saveCart();
-    updateCartBar();
-    cartBar.classList.add('hidden');
-
-    /* 渲染成功页并跳转 */
-    renderSuccessPage(order);
-    showPage('success');
-    showToast('支付成功！');
-  }
-}
-
 /* ========================================
    页面切换
    ======================================== */
-const pageSuccess = document.getElementById('page-success');
-const pageOrders = document.getElementById('page-orders');
-
 function showPage(target) {
-  /* 先关闭所有页面 */
   pageBrowse.classList.remove('slide-out-left');
   pageDetail.classList.remove('detail-active');
   pageCart.classList.remove('cart-active');
   pageSuccess.classList.remove('success-active');
   pageOrders.classList.remove('orders-active');
+  pageCheckout.classList.remove('checkout-active');
 
   if (target === 'browse') {
     renderProductGrid();
-    if (cart.length > 0) {
-      cartBar.classList.remove('hidden');
-    }
+    if (cart.length > 0) cartBar.classList.remove('hidden');
   } else if (target === 'cart') {
     pageBrowse.classList.add('slide-out-left');
     pageCart.classList.add('cart-active');
     cartBar.classList.add('hidden');
     renderCartBody();
+  } else if (target === 'checkout') {
+    pageBrowse.classList.add('slide-out-left');
+    pageCheckout.classList.add('checkout-active');
+    cartBar.classList.add('hidden');
   } else if (target === 'success') {
     pageBrowse.classList.add('slide-out-left');
     pageSuccess.classList.add('success-active');
@@ -731,16 +722,13 @@ function showPage(target) {
 }
 
 /* ========================================
-   筛选（动态分类 + 事件委托）
+   分类筛选
    ======================================== */
 async function loadCategories() {
   const data = await api('/categories');
   if (data && Array.isArray(data)) {
-    categories = data
-      .map(c => (typeof c === 'string' ? c : (c.name || c.key || '')))
-      .filter(Boolean);
+    categories = data.map(c => (typeof c === 'string' ? c : (c.name || ''))).filter(Boolean);
     renderFilters();
-    renderCategorySelect();
   }
 }
 
@@ -749,14 +737,7 @@ function renderFilters() {
   categories.forEach(name => {
     html += `<button class="filter-pill${currentFilter === name ? ' active' : ''}" data-cat="${name}">${name}</button>`;
   });
-  html += `<button class="filter-icon">🔍</button><button class="filter-icon">✦</button>`;
   filterRow.innerHTML = html;
-}
-
-function renderCategorySelect() {
-  formCategory.innerHTML = categories
-    .map(name => `<option value="${name}">${name}</option>`)
-    .join('');
 }
 
 filterRow.addEventListener('click', function(e) {
@@ -769,215 +750,7 @@ filterRow.addEventListener('click', function(e) {
 });
 
 /* ========================================
-   ===== 商品管理功能（调用后端 API） =====
-   ======================================== */
-
-function openManagePanel() {
-  manageOverlay.classList.add('active');
-  hideAddForm();
-  renderManageList();
-}
-
-function closeManagePanel() {
-  manageOverlay.classList.remove('active');
-}
-
-function renderManageList() {
-  manageCount.textContent = products.length;
-
-  if (products.length === 0) {
-    manageList.innerHTML = `
-      <div style="text-align:center;padding:40px 0;color:#999">
-        <p style="font-size:14px">暂无商品</p>
-        <p style="font-size:13px;margin-top:4px">点击"添加商品"创建第一个</p>
-      </div>
-    `;
-    return;
-  }
-
-  manageList.innerHTML = products.map(p => {
-    const soldOut = p.stock <= 0;
-    const lowStock = p.stock > 0 && p.stock <= 10;
-    return `
-      <div class="manage-item">
-        <div class="manage-item-img" style="background:${p.bg || '#f0f0f3'}">
-          ${p.image ? `<img src="${p.image}">` : productImageHTML(p)}
-        </div>
-        <div class="manage-item-info">
-          <div class="manage-item-name">${p.name}</div>
-          <div class="manage-item-meta">
-            <span class="manage-item-price">$${String(p.price).padStart(2, '0')}.00</span>
-            <span class="manage-item-stock ${soldOut ? 'out' : lowStock ? 'low' : ''}">
-              ${soldOut ? '已售罄' : `库存 ${p.stock}`}
-            </span>
-          </div>
-        </div>
-        <div class="manage-item-actions">
-          <button class="manage-item-edit" onclick="editProduct(${p.id})" title="编辑">
-            <svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-          </button>
-          <button class="manage-item-delete" onclick="deleteProduct(${p.id})" title="删除">
-            <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 5h10M6 5V3h4v2M5 5l1 9h4l1-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function showAddForm() {
-  editingProductId = null;
-  uploadedImage = null;
-  selectedColor = '#FFF3D6';
-  formTitle.textContent = '添加新商品';
-  formSaveBtn.textContent = '保存商品';
-  formName.value = '';
-  formBrand.value = '';
-  formPrice.value = '';
-  formStock.value = '';
-  formCategory.value = categories[0] || '';
-  uploadPreview.style.display = 'none';
-  uploadPlaceholder.style.display = 'flex';
-  document.querySelectorAll('.color-option').forEach(opt => {
-    opt.classList.toggle('selected', opt.dataset.color === selectedColor);
-  });
-  manageFormSection.style.display = 'block';
-}
-
-function editProduct(id) {
-  const product = products.find(p => p.id === id);
-  if (!product) return;
-
-  editingProductId = id;
-  uploadedImage = product.image || null;
-  selectedColor = product.bg || '#FFF3D6';
-
-  formTitle.textContent = '编辑商品';
-  formSaveBtn.textContent = '更新商品';
-  formName.value = product.name || '';
-  formBrand.value = product.brand || '';
-  formPrice.value = product.price || '';
-  formStock.value = product.stock !== undefined ? product.stock : '';
-  formCategory.value = product.cat || categories[0] || '';
-
-  if (product.image) {
-    uploadPreview.src = product.image;
-    uploadPreview.style.display = 'block';
-    uploadPlaceholder.style.display = 'none';
-  } else {
-    uploadPreview.style.display = 'none';
-    uploadPlaceholder.style.display = 'flex';
-  }
-
-  document.querySelectorAll('.color-option').forEach(opt => {
-    opt.classList.toggle('selected', opt.dataset.color === selectedColor);
-  });
-
-  manageFormSection.style.display = 'block';
-}
-
-function hideAddForm() {
-  manageFormSection.style.display = 'none';
-}
-
-imageInput.addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {
-    showToast('图片过大（最大 2MB）');
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    uploadedImage = event.target.result;
-    uploadPreview.src = uploadedImage;
-    uploadPreview.style.display = 'block';
-    uploadPlaceholder.style.display = 'none';
-  };
-  reader.readAsDataURL(file);
-});
-
-colorPicker.addEventListener('click', function(e) {
-  const option = e.target.closest('.color-option');
-  if (!option) return;
-  document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('selected'));
-  option.classList.add('selected');
-  selectedColor = option.dataset.color;
-});
-
-/* 保存商品 - 调用后端 API */
-async function saveProduct() {
-  const name = formName.value.trim();
-  const brand = formBrand.value.trim();
-  const price = parseFloat(formPrice.value);
-  const stock = parseInt(formStock.value) || 0;
-  const category = formCategory.value;
-
-  if (!name) { showToast('请输入商品名称'); formName.focus(); return; }
-  if (isNaN(price) || price < 0) { showToast('请输入有效价格'); formPrice.focus(); return; }
-
-  const payload = {
-    name, brand, price, stock, cat: category, bg: selectedColor,
-    image: uploadedImage,
-    bagBg: uploadedImage ? null : generateBagColor(category),
-    bagText: uploadedImage ? null : (brand || name).toUpperCase().substring(0, 10),
-    bagSub: uploadedImage ? null : category,
-  };
-
-  if (editingProductId !== null) {
-    const updated = await api(`/products/${editingProductId}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload)
-    });
-    if (updated) {
-      const idx = products.findIndex(p => p.id === editingProductId);
-      if (idx >= 0) products[idx] = updated;
-      showToast('商品已更新！');
-    }
-  } else {
-    const newProduct = await api('/products', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    if (newProduct) {
-      products.push(newProduct);
-      showToast('商品已添加！');
-    }
-  }
-
-  renderManageList();
-  hideAddForm();
-  renderProductGrid();
-}
-
-/* 删除商品 - 调用后端 API */
-async function deleteProduct(id) {
-  const product = products.find(p => p.id === id);
-  if (!product) return;
-  if (!confirm(`确认删除"${product.name}"？`)) return;
-
-  const result = await api(`/products/${id}`, { method: 'DELETE' });
-  if (result) {
-    products = products.filter(p => p.id !== id);
-    cart = cart.filter(c => c.id !== id);
-    saveCart();
-    renderManageList();
-    renderProductGrid();
-    updateCartBar();
-    showToast('商品已删除');
-  }
-}
-
-function generateBagColor(category) {
-  const colors = {
-    'Chips': '#E8650C', 'Choco': '#5B3A1A', 'Drinks': '#1A5B9E',
-    'Cookies': '#C01A1A', 'Nuts': '#1A8A4E',
-  };
-  return colors[category] || '#666';
-}
-
-/* ========================================
-   Toast 提示
+   Toast
    ======================================== */
 let toastTimer = null;
 function showToast(message) {
