@@ -741,6 +741,27 @@ document.getElementById('login-user').addEventListener('keydown', function(e) {
 });
 
 /* ========================================
+   侧边栏折叠
+   ======================================== */
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const mainContent = document.querySelector('.main-content');
+const SIDEBAR_KEY = 'uid_sidebar_collapsed';
+
+if (localStorage.getItem(SIDEBAR_KEY) === '1') {
+  sidebar.classList.add('collapsed');
+  mainContent.classList.add('expanded');
+  sidebarToggle.querySelector('svg').style.transform = 'rotate(-90deg)';
+}
+
+sidebarToggle.addEventListener('click', () => {
+  const collapsed = sidebar.classList.toggle('collapsed');
+  mainContent.classList.toggle('expanded', collapsed);
+  sidebarToggle.querySelector('svg').style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+  localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+});
+
+/* ========================================
    初始化
    ======================================== */
 if (checkAuth()) {

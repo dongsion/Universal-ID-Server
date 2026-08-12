@@ -12,7 +12,8 @@ body {
 
 #merchant-app {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* ========================================
@@ -30,6 +31,53 @@ body {
   bottom: 0;
   left: 0;
   z-index: 100;
+  transition: width 0.3s ease, transform 0.3s ease;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 64px;
+}
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .nav-item span:not(.nav-badge),
+.sidebar.collapsed .view-store {
+  display: none;
+}
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 12px 0;
+}
+.sidebar.collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+.sidebar.collapsed .sidebar-logo {
+  justify-content: center;
+  padding: 0 0 24px;
+}
+.sidebar.collapsed .sidebar-footer {
+  padding-top: 16px;
+}
+
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 8px;
+  color: #888;
+  cursor: pointer;
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.sidebar-toggle:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
 }
 
 .sidebar-logo {
@@ -114,7 +162,14 @@ body {
   flex: 1;
   margin-left: 240px;
   padding: 32px 40px;
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: margin-left 0.3s ease;
+}
+
+.main-content.expanded {
+  margin-left: 64px;
 }
 
 /* ========================================
