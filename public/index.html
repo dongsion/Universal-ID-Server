@@ -14,15 +14,16 @@
     <header class="browse-header">
       <h1>精选商品<br>尽在此处</h1>
       <div class="header-actions">
-        <button class="menu-btn" onclick="showPage('orders')" title="我的订单">
-          <svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 4h12l-1 8H6L5 4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M8 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>
+        <button class="menu-btn header-order-btn" onclick="showPage('orders')" title="我的订单">
+          <svg width="20" height="20" viewBox="0 0 22 22"><path d="M5 4h12l-1 8H6L5 4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M8 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>
+          <span class="header-btn-label">订单</span>
         </button>
-        <button class="menu-btn" id="user-account-btn" onclick="showAccountPage()" title="我的账户">
-          <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4 19c0-4 3-6 7-6s7 2 7 6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+        <button class="menu-btn header-account-btn" id="user-account-btn" onclick="showAccountPage()" title="我的账户">
+          <svg width="20" height="20" viewBox="0 0 22 22"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4 19c0-4 3-6 7-6s7 2 7 6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
           <span class="user-badge-dot" id="user-badge-dot" style="display:none;"></span>
         </button>
-        <div class="cart-icon-wrapper" onclick="showPage('cart')">
-          <svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 5h3l2 10h8l2-7H7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="8" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/></svg>
+        <div class="cart-icon-wrapper header-cart-btn" onclick="showPage('cart')">
+          <svg width="22" height="22" viewBox="0 0 24 24"><path d="M3 5h3l2 10h8l2-7H7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="8" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/></svg>
           <span class="cart-icon-badge" id="cart-badge-top">0</span>
         </div>
       </div>
@@ -117,14 +118,6 @@
             <label>QQ/微信/手机号</label>
             <input type="text" id="checkout-phone" placeholder="请输入QQ/微信/手机号" maxlength="50">
           </div>
-          <div class="checkout-form-row">
-            <label>备注说明</label>
-            <textarea id="checkout-address" placeholder="选填，请输入备注说明" rows="2" maxlength="200"></textarea>
-          </div>
-          <div class="checkout-form-row">
-            <label>备注</label>
-            <input type="text" id="checkout-note" placeholder="选填，给商家留言" maxlength="100">
-          </div>
         </div>
       </div>
       <!-- 商品清单 -->
@@ -138,10 +131,6 @@
         <div class="checkout-amount-row">
           <span>商品金额</span>
           <span id="checkout-goods-amount">$0.00</span>
-        </div>
-        <div class="checkout-amount-row">
-          <span>运费</span>
-          <span class="free-shipping">免运费</span>
         </div>
         <div class="checkout-amount-row total">
           <span>实付金额</span>

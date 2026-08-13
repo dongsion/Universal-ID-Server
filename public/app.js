@@ -860,7 +860,6 @@ function goToCheckoutPage(isBuyNow) {
   const addr = loadAddress();
   if (addr.name) document.getElementById('checkout-name').value = addr.name;
   if (addr.phone) document.getElementById('checkout-phone').value = addr.phone;
-  if (addr.address) document.getElementById('checkout-address').value = addr.address;
 
   showPage('checkout');
 }
@@ -871,14 +870,12 @@ function goToCheckoutPage(isBuyNow) {
 async function submitOrder() {
   const name = document.getElementById('checkout-name').value.trim();
   const phone = document.getElementById('checkout-phone').value.trim();
-  const address = document.getElementById('checkout-address').value.trim();
-  const note = document.getElementById('checkout-note').value.trim();
 
-  if (!name) { showToast('请输入收货人姓名'); return; }
+  if (!name) { showToast('请输入联系人姓名'); return; }
   if (!phone) { showToast('请输入联系方式'); return; }
 
   /* 保存联系信息 */
-  saveAddress({ name, phone, address });
+  saveAddress({ name, phone });
 
   const isBuyNow = buyNowItem !== null;
   const items = isBuyNow
@@ -894,7 +891,7 @@ async function submitOrder() {
     body: JSON.stringify({
       items: items.map(c => ({ id: c.id, name: c.name, brand: c.brand, price: c.price, qty: c.qty, image: c.image })),
       total,
-      contact: { name, phone, address, note },
+      contact: { name, phone },
       userId: currentUser ? currentUser.id : null
     })
   });

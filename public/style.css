@@ -149,6 +149,51 @@ html, body {
   display: flex;
   align-items: center;
 }
+/* 首页顶部按钮增强 */
+.header-order-btn {
+  background: #f0f0f3;
+  border-radius: 12px;
+  padding: 8px 12px;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+.header-order-btn:active {
+  background: #e8e8ee;
+}
+.header-btn-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.header-account-btn {
+  background: #f0f0f3;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.header-account-btn:active {
+  background: #e8e8ee;
+}
+.header-cart-btn {
+  background: #1a1a1a;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFD60A !important;
+}
+.header-cart-btn:active {
+  transform: scale(0.92);
+}
+}
 
 /* ========================================
    筛选行
@@ -1758,12 +1803,17 @@ html, body {
   pointer-events: none;
 }
 .cart-edit-btn {
-  background: none;
+  background: #1a1a1a;
   border: none;
   color: #FFD60A;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  padding: 6px 16px;
+  border-radius: 20px;
+}
+.cart-edit-btn:active {
+  transform: scale(0.94);
 }
 
 /* ========================================
@@ -1804,7 +1854,7 @@ html, body {
    订单确认页
    ======================================== */
 .checkout-body {
-  padding: 16px 20px 100px;
+  padding: 16px 20px 120px;
 }
 .checkout-section {
   background: #fff;
