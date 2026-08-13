@@ -2055,22 +2055,70 @@ html, body {
   margin: 0 20px 20px;
   background: #fff;
   border-radius: 20px;
-  padding: 28px 24px;
+  padding: 24px 20px;
   text-align: center;
   border: 2px solid #07C160;
   box-shadow: 0 4px 20px rgba(7, 193, 96, 0.1);
 }
-.pay-qr-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #07C160;
+.pay-qr-steps {
+  text-align: left;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #F6FFFA;
+  border-radius: 12px;
+}
+.pay-qr-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #333;
+  padding: 4px 0;
+  font-weight: 600;
+}
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: #07C160;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.pay-qr-amount-wrap {
+  margin-bottom: 16px;
+}
+.pay-qr-amount-label {
+  font-size: 13px;
+  color: #999;
+  font-weight: 600;
   margin-bottom: 4px;
 }
 .pay-qr-amount {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: 900;
-  color: #1a1a1a;
-  margin-bottom: 16px;
+  color: #07C160;
+  margin-bottom: 8px;
+  letter-spacing: -1px;
+}
+.pay-qr-copy-btn {
+  display: inline-block;
+  padding: 4px 14px;
+  background: #f0f0f3;
+  border: 1px solid #07C160;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #07C160;
+  cursor: pointer;
+  font-family: inherit;
+}
+.pay-qr-copy-btn:active {
+  transform: scale(0.94);
 }
 .pay-qr-img-wrap {
   display: inline-block;
@@ -2087,15 +2135,16 @@ html, body {
   border-radius: 8px;
 }
 .pay-qr-tip {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #1a1a1a;
   margin-bottom: 4px;
 }
 .pay-qr-tip-sub {
   font-size: 12px;
-  color: #999;
+  color: #ff6b00;
   margin-bottom: 20px;
+  font-weight: 600;
 }
 .pay-paid-btn {
   width: 100%;

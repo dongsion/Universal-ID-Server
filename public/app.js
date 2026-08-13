@@ -1023,6 +1023,24 @@ async function markAsPaid() {
   }
 }
 
+/* 复制支付金额 */
+function copyPayAmount() {
+  const amountEl = document.getElementById('pay-qr-amount');
+  if (!amountEl) return;
+  const text = amountEl.textContent.replace('$', '').trim();
+  const tempInput = document.createElement('input');
+  tempInput.value = text;
+  document.body.appendChild(tempInput);
+  tempInput.select();
+  try {
+    document.execCommand('copy');
+    showToast('金额已复制：' + text);
+  } catch (e) {
+    showToast('复制失败，请手动记下金额');
+  }
+  document.body.removeChild(tempInput);
+}
+
 /* ========================================
    我的订单页
    ======================================== */

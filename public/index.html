@@ -158,13 +158,21 @@
     <!-- 支付二维码区域 -->
     <div id="pay-qr-section" style="display:none;">
       <div class="pay-qr-card">
-        <div class="pay-qr-title">扫码支付</div>
-        <div class="pay-qr-amount" id="pay-qr-amount">$0.00</div>
+        <div class="pay-qr-steps">
+          <div class="pay-qr-step"><span class="step-num">1</span> 微信扫一扫下方二维码</div>
+          <div class="pay-qr-step"><span class="step-num">2</span> 输入正确金额并支付</div>
+          <div class="pay-qr-step"><span class="step-num">3</span> 点击"我已支付"通知商家</div>
+        </div>
+        <div class="pay-qr-amount-wrap">
+          <div class="pay-qr-amount-label">需支付金额</div>
+          <div class="pay-qr-amount" id="pay-qr-amount">$0.00</div>
+          <button class="pay-qr-copy-btn" id="pay-qr-copy-btn" onclick="copyPayAmount()">复制金额</button>
+        </div>
         <div class="pay-qr-img-wrap">
           <img src="/wechat-pay-qr.jpeg" alt="微信支付二维码" class="pay-qr-img">
         </div>
-        <div class="pay-qr-tip">请扫描上方二维码完成支付</div>
-        <div class="pay-qr-tip-sub">支付完成后请点击下方按钮通知商家</div>
+        <div class="pay-qr-tip">长按或截图保存二维码，打开微信扫一扫</div>
+        <div class="pay-qr-tip-sub">支付时请输入上方显示的准确金额，方便商家核对</div>
         <button class="pay-paid-btn" id="pay-paid-btn" onclick="markAsPaid()">我已支付</button>
       </div>
     </div>
