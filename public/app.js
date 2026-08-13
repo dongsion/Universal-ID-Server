@@ -868,51 +868,71 @@ function goToCheckoutPage(isBuyNow) {
    提交订单
    ======================================== */
 async function submitOrder() {
-  const name = document.getElementById('checkout-name').value.trim();
-  const phone = document.getElementById('checkout-phone').value.trim();
+  const name = document.getElementById('checkout-name');
+  const phone = document.getElementById('checkout-phone');
 
-  if (!name) { showToast('请输入联系人姓名'); return; }
-  if (!phone) { showToast('请输入联系方式'); return; }
+  if (!name || !phone) { showToast('页面加载异常，请刷新重试'); return; }
+
+  const nameVal = name.value.trim();
+  const phoneVal = phone.value.trim();
+
+  if (!nameVal) { showToast('请输入联系人姓名'); return; }
+  if (!phoneVal) { showToast('请输入联系方式'); return; }
 
   /* 保存联系信息 */
-  saveAddress({ name, phone });
+  saveAddress({ name: nameVal, phone: phoneVal });
 
   const isBuyNow = buyNowItem !== null;
   const items = isBuyNow
     ? [buyNowItem]
     : cart.filter(c => selectedItems.has(c.id));
 
+  if (!items || items.length === 0) { showToast('购物车为空'); return; }
+
   const total = items.reduce((s, c) => s + c.price * c.qty, 0);
+
+  const submitBtn = document.querySelector('.checkout-submit-btn');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '提交中...'; }
 
   showToast('正在提交订单...');
 
-  const order = await api('/orders', {
-    method: 'POST',
-    body: JSON.stringify({
-      items: items.map(c => ({ id: c.id, name: c.name, brand: c.brand, price: c.price, qty: c.qty, image: c.image })),
-      total,
-      contact: { name, phone },
-      userId: currentUser ? currentUser.id : null
-    })
-  });
+  try {
+    const order = await api('/orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: items.map(c => ({ id: c.id, name: c.name, brand: c.brand, price: c.price, qty: c.qty, image: c.image })),
+        total,
+        contact: { name: nameVal, phone: phoneVal },
+        userId: currentUser ? currentUser.id : null
+      })
+    });
 
-  if (order) {
-    addOrderToHistory(order);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '提交订单'; }
 
-    if (isBuyNow) {
-      buyNowItem = null;
+    if (order && order.id) {
+      addOrderToHistory(order);
+
+      if (isBuyNow) {
+        buyNowItem = null;
+      } else {
+        const settledIds = new Set(items.map(i => i.id));
+        cart = cart.filter(c => !settledIds.has(c.id));
+        items.forEach(i => selectedItems.delete(i.id));
+        saveCart();
+        updateCartBar();
+      }
+
+      if (cartBar) cartBar.classList.add('hidden');
+      renderSuccessPage(order);
+      showPage('success');
+      showToast('订单已提交，请扫码支付');
     } else {
-      const settledIds = new Set(items.map(i => i.id));
-      cart = cart.filter(c => !settledIds.has(c.id));
-      items.forEach(i => selectedItems.delete(i.id));
-      saveCart();
-      updateCartBar();
+      showToast('提交失败，请检查网络后重试');
     }
-
-    cartBar.classList.add('hidden');
-    renderSuccessPage(order);
-    showPage('success');
-    showToast('订单已提交，请扫码支付');
+  } catch (e) {
+    console.error('submitOrder错误:', e);
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '提交订单'; }
+    showToast('提交订单失败：' + (e.message || '未知错误'));
   }
 }
 
