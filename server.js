@@ -107,8 +107,8 @@ if (catCount.c === 0) {
 }
 
 /* ---- 商家登录密码（只有你知道） ---- */
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'uid2024';
+const ADMIN_USER = 'zhangguiliu';
+const ADMIN_PASS = '200201';
 
 /* ========================================
    WebSocket 广播
@@ -471,6 +471,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  API:     http://43.139.32.212:${PORT}/api/uid`);
   console.log(`  WS:      ws://43.139.32.212:${PORT}/ws`);
   console.log(`  端口:    ${PORT}`);
-  console.log(`  账号:    admin / uid2024`);
+  console.log(`  账号:    ${ADMIN_USER} / ${ADMIN_PASS}`);
   console.log(`========================================\n`);
 });
