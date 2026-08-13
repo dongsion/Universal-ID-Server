@@ -93,6 +93,79 @@ function handleWSMessage(msg) {
     saveCart();
     renderProductGrid();
     updateCartBar();
+  } else if (type === 'order_updated' || type === 'order_new') {
+    /* 实时更新本地订单 */
+    syncOrderFromServer(data);
+  }
+}
+
+/* ---- 同步订单到本地 ---- */
+function syncOrderFromServer(serverOrder) {
+  const history = loadOrderHistory();
+  const idx = history.findIndex(o => o.id === serverOrder.id);
+  if (idx >= 0) {
+    const oldStatus = history[idx].status;
+    const oldCardKeys = history[idx].card_keys;
+    history[idx] = { ...history[idx], ...serverOrder };
+    saveOrderHistory(history);
+    
+    /* 状态变化通知 */
+    if (oldStatus !== serverOrder.status) {
+      const statusNames = {
+        'pending': '商家确认中',
+        'confirmed': '待付款',
+        'paid': '商家处理中',
+        'delivered': '卡密已交付',
+        'cancelled': '已取消'
+      };
+      if (serverOrder.status === 'delivered') {
+        showToast('🎉 卡密已交付！请查看订单');
+      } else if (serverOrder.status === 'confirmed') {
+        showToast('✅ 商家已确认订单');
+      } else if (serverOrder.status === 'paid') {
+        showToast('💰 商家已确认收款');
+      } else if (serverOrder.status === 'cancelled') {
+        showToast('❌ 订单已取消');
+      }
+    }
+  }
+  
+  /* 如果当前在订单页或成功页，刷新显示 */
+  const activePage = document.querySelector('.page.orders-active, .page.success-active');
+  if (activePage) {
+    if (activePage.classList.contains('orders-active')) {
+      renderOrdersList();
+    } else if (activePage.classList.contains('success-active')) {
+      renderSuccessPage(serverOrder);
+    }
+  }
+}
+
+/* ---- 从服务器同步所有订单状态 ---- */
+async function syncAllOrders() {
+  const history = loadOrderHistory();
+  if (history.length === 0) return;
+  
+  let hasUpdate = false;
+  for (const localOrder of history) {
+    const serverOrder = await api(`/orders/${localOrder.id}`);
+    if (serverOrder && serverOrder.status !== localOrder.status) {
+      hasUpdate = true;
+    }
+    if (serverOrder) {
+      const idx = history.findIndex(o => o.id === serverOrder.id);
+      if (idx >= 0) {
+        history[idx] = { ...history[idx], ...serverOrder };
+      }
+    }
+  }
+  
+  if (hasUpdate) {
+    saveOrderHistory(history);
+    const activePage = document.querySelector('.page.orders-active, .page.success-active');
+    if (activePage) {
+      if (activePage.classList.contains('orders-active')) renderOrdersList();
+    }
   }
 }
 
@@ -773,6 +846,8 @@ function showPage(target) {
     pageOrders.classList.add('orders-active');
     cartBar.classList.add('hidden');
     renderOrdersList();
+    /* 进入订单页时从服务器同步最新状态 */
+    syncAllOrders();
   }
 }
 
@@ -824,3 +899,9 @@ renderProductGrid();
 updateCartBar();
 loadProducts();
 connectWS();
+
+/* 启动时同步一次订单状态 */
+syncAllOrders();
+
+/* 每30秒轮询一次订单状态（WebSocket 的后备方案） */
+setInterval(syncAllOrders, 30000);
