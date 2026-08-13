@@ -702,6 +702,7 @@ function openOrderModal(orderId) {
     footer.innerHTML = `
       <button class="btn-secondary" onclick="closeOrderModal()">关闭</button>
       ${order.status !== 'delivered' ? `<button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'pending')">重新打开</button>` : ''}
+      <button class="btn-delete" onclick="deleteOrder('${order.id}')" style="background:#ff3b30;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;">删除订单</button>
     `;
   }
 
@@ -723,6 +724,17 @@ async function updateOrderStatus(orderId, status) {
     renderOrders();
     closeOrderModal();
     showToast(`订单已${STATUS_NAMES[status] || status}`);
+  }
+}
+
+async function deleteOrder(orderId) {
+  if (!confirm('确认删除此订单？删除后不可恢复。')) return;
+  const result = await api(`/orders/${orderId}`, { method: 'DELETE' });
+  if (result) {
+    orders = orders.filter(o => o.id !== orderId);
+    renderOrders();
+    closeOrderModal();
+    showToast('订单已删除');
   }
 }
 

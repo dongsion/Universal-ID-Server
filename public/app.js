@@ -96,6 +96,16 @@ function handleWSMessage(msg) {
   } else if (type === 'order_updated' || type === 'order_new') {
     /* 实时更新本地订单 */
     syncOrderFromServer(data);
+  } else if (type === 'order_deleted') {
+    /* 订单被删除 */
+    let history = loadOrderHistory();
+    history = history.filter(o => o.id !== data.id);
+    saveOrderHistory(history);
+    const ordersList = document.getElementById('orders-list');
+    if (ordersList && pageOrders.classList.contains('orders-active')) {
+      renderOrdersList();
+    }
+    showToast('订单已被删除');
   }
 }
 
@@ -790,7 +800,10 @@ function renderOrdersList() {
           <div class="order-record-id">${o.id}</div>
           <div class="order-record-time">${formatOrderDate(o.created_at)}</div>
         </div>
-        <span class="order-record-status" style="background:${(statusColors[o.status] || '#999')}22;color:${statusColors[o.status] || '#999'};">${statusNames[o.status] || o.status}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="order-record-status" style="background:${(statusColors[o.status] || '#999')}22;color:${statusColors[o.status] || '#999'};">${statusNames[o.status] || o.status}</span>
+          <button onclick="deleteLocalOrder('${o.id}')" style="background:none;border:none;color:#c01a1a;cursor:pointer;font-size:16px;padding:4px;line-height:1;" title="删除订单">🗑</button>
+        </div>
       </div>
       <div class="order-record-items">
         ${(o.items || []).map(i => `<span class="order-record-item">${i.name} ×${i.qty}</span>`).join('')}
@@ -807,6 +820,15 @@ function renderOrdersList() {
       </div>
     </div>
   `).join('');
+}
+
+function deleteLocalOrder(orderId) {
+  if (!confirm('确认删除此订单记录？删除后不可恢复。')) return;
+  let history = loadOrderHistory();
+  history = history.filter(o => o.id !== orderId);
+  saveOrderHistory(history);
+  renderOrdersList();
+  showToast('订单已删除');
 }
 
 function formatOrderDate(iso) {

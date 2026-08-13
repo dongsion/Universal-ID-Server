@@ -271,6 +271,16 @@ app.get('/api/uid/orders/:id', (req, res) => {
   res.json(order);
 });
 
+/* 删除订单 */
+app.delete('/api/uid/orders/:id', (req, res) => {
+  const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+  db.prepare('DELETE FROM uid_orders WHERE id = ?').run(req.params.id);
+  broadcast('order_deleted', { id: req.params.id });
+  console.log(`订单已删除: ${req.params.id}`);
+  res.json({ success: true });
+});
+
 app.post('/api/uid/orders', (req, res) => {
   const { items, total, contact } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
