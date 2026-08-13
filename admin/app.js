@@ -152,6 +152,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
     if (tab === 'dashboard') renderDashboard();
     if (tab === 'products') renderProductTable();
     if (tab === 'orders') renderOrders();
+    if (tab === 'settings') updateSettingsUI();
   });
 });
 
@@ -817,6 +818,64 @@ orderModal.addEventListener('click', function(e) {
 });
 
 /* ========================================
+   设置页面
+   ======================================== */
+const ADMIN_USER_KEY = 'uid_admin_username';
+
+function updateSettingsUI() {
+  const savedUser = localStorage.getItem(ADMIN_USER_KEY) || 'admin';
+  const avatar = savedUser.charAt(0).toUpperCase();
+  document.getElementById('settings-account-name').textContent = savedUser;
+  document.getElementById('settings-avatar').textContent = avatar;
+  document.getElementById('sidebar-user-name').textContent = savedUser;
+  document.getElementById('sidebar-user-avatar').textContent = avatar;
+}
+
+function showAccountInfo() {
+  const savedUser = localStorage.getItem(ADMIN_USER_KEY) || 'admin';
+  showToast(`当前账号：${savedUser}`);
+}
+
+function changePassword() {
+  showToast('请联系系统管理员修改密码');
+}
+
+function clearCache() {
+  if (!confirm('确认清除本地缓存？不会影响服务器数据。')) return;
+  localStorage.removeItem('uid_sidebar_collapsed');
+  showToast('缓存已清除');
+}
+
+async function checkServerStatus() {
+  const arrow = document.getElementById('server-status-arrow');
+  arrow.textContent = '检查中...';
+  const result = await api('/health');
+  if (result && result.status === 'ok') {
+    arrow.textContent = '正常 ✓';
+    arrow.style.color = '#34c759';
+    showToast('服务器运行正常');
+  } else {
+    arrow.textContent = '异常 ✗';
+    arrow.style.color = '#ff3b30';
+    showToast('服务器连接异常');
+  }
+  setTimeout(() => {
+    arrow.textContent = '›';
+    arrow.style.color = '';
+  }, 3000);
+}
+
+function merchantLogout() {
+  if (!confirm('确认退出登录？')) return;
+  localStorage.removeItem(AUTH_KEY);
+  localStorage.removeItem(ADMIN_USER_KEY);
+  showToast('已退出登录');
+  setTimeout(() => {
+    location.reload();
+  }, 500);
+}
+
+/* ========================================
    登录
    ======================================== */
 const AUTH_KEY = 'uid_admin_token';
@@ -838,8 +897,10 @@ document.getElementById('login-btn').addEventListener('click', async function() 
   const result = await api('/login', { method: 'POST', body: JSON.stringify({ username, password }) });
   if (result && result.success) {
     localStorage.setItem(AUTH_KEY, result.token);
+    localStorage.setItem(ADMIN_USER_KEY, username);
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('login-error').style.display = 'none';
+    updateSettingsUI();
     loadData();
     connectWS();
   } else {
@@ -931,6 +992,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
    初始化
    ======================================== */
 if (checkAuth()) {
+  updateSettingsUI();
   loadData();
   connectWS();
 }

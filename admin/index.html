@@ -50,8 +50,19 @@
         <span>订单管理</span>
         <span class="nav-badge" id="nav-order-badge" style="display:none">0</span>
       </button>
+      <button class="nav-item" data-tab="settings">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M10 1v2M10 17v2M1 10h2M17 10h2M3.5 3.5l1.4 1.4M15.1 15.1l1.4 1.4M3.5 16.5l1.4-1.4M15.1 4.9l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>设置</span>
+      </button>
     </nav>
     <div class="sidebar-footer">
+      <div class="sidebar-user" id="sidebar-user">
+        <div class="sidebar-user-avatar" id="sidebar-user-avatar">A</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-user-name">admin</div>
+          <div class="sidebar-user-role">商家管理员</div>
+        </div>
+      </div>
       <a href="/" class="view-store">查看店铺 →</a>
     </div>
   </aside>
@@ -152,6 +163,83 @@
       <div class="order-list" id="order-list">
         <!-- JS 注入 -->
       </div>
+    </section>
+
+    <!-- ====== 设置 ====== -->
+    <section class="tab-content" id="tab-settings">
+      <div class="page-header">
+        <h1>设置</h1>
+        <p class="page-sub">账户信息与系统设置</p>
+      </div>
+
+      <!-- 账户信息卡片 -->
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-avatar" id="settings-avatar">A</div>
+          <div>
+            <div class="settings-account-name" id="settings-account-name">admin</div>
+            <div class="settings-account-role">商家管理员</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 设置项列表 -->
+      <div class="settings-section">
+        <div class="settings-section-title">账户</div>
+        <div class="settings-item" onclick="showAccountInfo()">
+          <div class="settings-item-left">
+            <span class="settings-item-icon">👤</span>
+            <span class="settings-item-label">账号信息</span>
+          </div>
+          <span class="settings-item-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="changePassword()">
+          <div class="settings-item-left">
+            <span class="settings-item-icon">🔑</span>
+            <span class="settings-item-label">修改密码</span>
+          </div>
+          <span class="settings-item-arrow">›</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">系统</div>
+        <div class="settings-item" onclick="clearCache()">
+          <div class="settings-item-left">
+            <span class="settings-item-icon">🗑</span>
+            <span class="settings-item-label">清除缓存</span>
+          </div>
+          <span class="settings-item-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="checkServerStatus()">
+          <div class="settings-item-left">
+            <span class="settings-item-icon">🌐</span>
+            <span class="settings-item-label">服务器状态</span>
+          </div>
+          <span class="settings-item-arrow" id="server-status-arrow">›</span>
+        </div>
+        <div class="settings-item" onclick="window.open('/', '_blank')">
+          <div class="settings-item-left">
+            <span class="settings-item-icon">🏪</span>
+            <span class="settings-item-label">查看客户端</span>
+          </div>
+          <span class="settings-item-arrow">›</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">关于</div>
+        <div class="settings-item">
+          <div class="settings-item-left">
+            <span class="settings-item-icon">📋</span>
+            <span class="settings-item-label">版本号</span>
+          </div>
+          <span class="settings-item-value">v2.0.0</span>
+        </div>
+      </div>
+
+      <!-- 退出登录按钮 -->
+      <button class="settings-logout-btn" onclick="merchantLogout()">退出登录</button>
     </section>
   </main>
 

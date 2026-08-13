@@ -154,6 +154,48 @@ function showAccountPage() {
   showPage('account');
 }
 
+/* 账号信息 */
+function showAccountInfo() {
+  if (!currentUser) { showToast('请先登录'); return; }
+  showToast(`账号：${currentUser.username}`);
+}
+
+/* 手动同步订单 */
+async function syncMyOrders() {
+  if (!currentUser) { showToast('请先登录'); return; }
+  showToast('正在同步订单...');
+  await syncOrdersFromServer();
+  showToast('订单同步完成');
+}
+
+/* 清除缓存 */
+function clearAppCache() {
+  if (!confirm('确认清除本地缓存？购物车和未同步的订单可能会丢失。')) return;
+  localStorage.removeItem(CART_KEY);
+  localStorage.removeItem(ADDRESS_KEY);
+  cart = [];
+  saveCart();
+  updateCartBar();
+  showToast('缓存已清除');
+}
+
+/* 检查服务器状态 */
+async function checkServerStatus() {
+  const arrow = document.getElementById('client-server-status-arrow');
+  if (arrow) arrow.textContent = '检查中...';
+  const result = await api('/health');
+  if (result && result.status === 'ok') {
+    if (arrow) { arrow.textContent = '正常 ✓'; arrow.style.color = '#34c759'; }
+    showToast('服务器运行正常');
+  } else {
+    if (arrow) { arrow.textContent = '异常 ✗'; arrow.style.color = '#ff3b30'; }
+    showToast('服务器连接异常');
+  }
+  if (arrow) {
+    setTimeout(() => { arrow.textContent = '›'; arrow.style.color = ''; }, 3000);
+  }
+}
+
 /* 更新账户UI */
 function updateAccountUI() {
   const authSection = document.getElementById('account-auth-section');

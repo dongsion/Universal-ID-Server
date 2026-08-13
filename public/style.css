@@ -2336,3 +2336,58 @@ html, body {
   line-height: 1.6;
   text-align: center;
 }
+
+/* ========================================
+   设置项列表（客户端）
+   ======================================== */
+.settings-section {
+  background: #fff;
+  border-radius: 16px;
+  margin-bottom: 12px;
+  border: 1px solid #f0f0f3;
+  overflow: hidden;
+}
+.settings-section-title {
+  padding: 14px 20px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-top: 1px solid #f5f5f7;
+}
+.settings-item:active {
+  background: #f0f0f3;
+}
+.settings-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.settings-item-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+.settings-item-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.settings-item-arrow {
+  font-size: 18px;
+  color: #ccc;
+  font-weight: 300;
+}
+.settings-item-value {
+  font-size: 13px;
+  color: #999;
+}
