@@ -18,10 +18,15 @@ let cartEditMode = false;
 let buyNowItem = null; /* 立即购买临时商品 */
 const selectedItems = new Set(); /* 购物车选中项 */
 
+/* ---- 用户会话 ---- */
+let currentUser = null; /* { id, username, token } */
+let authMode = 'login'; /* 'login' 或 'register' */
+
 /* ---- localStorage ---- */
 const CART_KEY = 'universal_id_cart';
 const ORDERS_KEY = 'universal_id_orders';
 const ADDRESS_KEY = 'universal_id_address';
+const USER_KEY = 'universal_id_user';
 
 function loadCart() {
   const saved = localStorage.getItem(CART_KEY);
@@ -48,6 +53,174 @@ function loadAddress() {
   return {};
 }
 function saveAddress(addr) { localStorage.setItem(ADDRESS_KEY, JSON.stringify(addr)); }
+
+/* ---- 用户会话管理 ---- */
+function loadUser() {
+  const saved = localStorage.getItem(USER_KEY);
+  if (saved) { try { return JSON.parse(saved); } catch (e) {} }
+  return null;
+}
+function saveUser(user) { localStorage.setItem(USER_KEY, JSON.stringify(user)); }
+function clearUser() { localStorage.removeItem(USER_KEY); currentUser = null; }
+
+/* 切换登录/注册标签 */
+function switchAuthTab(mode) {
+  authMode = mode;
+  const tabLogin = document.getElementById('tab-login');
+  const tabRegister = document.getElementById('tab-register');
+  const confirmGroup = document.getElementById('auth-confirm-group');
+  const submitBtn = document.getElementById('auth-submit-btn');
+  const hint = document.getElementById('auth-hint');
+
+  if (mode === 'login') {
+    tabLogin.classList.add('active');
+    tabRegister.classList.remove('active');
+    confirmGroup.style.display = 'none';
+    submitBtn.textContent = '登录';
+    hint.textContent = '还没有账号？点击上方"注册"';
+  } else {
+    tabLogin.classList.remove('active');
+    tabRegister.classList.add('active');
+    confirmGroup.style.display = 'block';
+    submitBtn.textContent = '注册';
+    hint.textContent = '已有账号？点击上方"登录"';
+  }
+  /* 清空输入 */
+  document.getElementById('auth-username').value = '';
+  document.getElementById('auth-password').value = '';
+  const confirmInput = document.getElementById('auth-confirm-password');
+  if (confirmInput) confirmInput.value = '';
+}
+
+/* 处理登录/注册 */
+async function handleAuth() {
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value.trim();
+
+  if (!username) { showToast('请输入用户名'); return; }
+  if (!password) { showToast('请输入密码'); return; }
+
+  if (authMode === 'register') {
+    const confirmPassword = document.getElementById('auth-confirm-password').value.trim();
+    if (password !== confirmPassword) { showToast('两次密码不一致'); return; }
+    if (password.length < 6) { showToast('密码至少6位'); return; }
+
+    showToast('正在注册...');
+    const result = await api('/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+
+    if (result && result.success) {
+      currentUser = result.user;
+      saveUser(currentUser);
+      showToast('注册成功！');
+      updateAccountUI();
+      /* 注册后同步本地订单到账户 */
+      await syncLocalOrdersToAccount();
+      showAccountPage();
+    }
+  } else {
+    showToast('正在登录...');
+    const result = await api('/user-login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+
+    if (result && result.success) {
+      currentUser = result.user;
+      saveUser(currentUser);
+      showToast('登录成功！');
+      updateAccountUI();
+      /* 登录后同步本地订单到账户，再从服务器拉取 */
+      await syncLocalOrdersToAccount();
+      await syncOrdersFromServer();
+      showAccountPage();
+    }
+  }
+}
+
+/* 退出登录 */
+function handleLogout() {
+  if (!confirm('确认退出登录？')) return;
+  clearUser();
+  showToast('已退出登录');
+  updateAccountUI();
+  showAccountPage();
+}
+
+/* 显示账户页面 */
+function showAccountPage() {
+  showPage('account');
+}
+
+/* 更新账户UI */
+function updateAccountUI() {
+  const authSection = document.getElementById('account-auth-section');
+  const infoSection = document.getElementById('account-info-section');
+  const badgeDot = document.getElementById('user-badge-dot');
+
+  if (currentUser) {
+    authSection.style.display = 'none';
+    infoSection.style.display = 'block';
+    badgeDot.style.display = 'block';
+    document.getElementById('account-username').textContent = currentUser.username;
+    document.getElementById('account-avatar').textContent = currentUser.username.charAt(0).toUpperCase();
+  } else {
+    authSection.style.display = 'block';
+    infoSection.style.display = 'none';
+    badgeDot.style.display = 'none';
+  }
+}
+
+/* 把本地订单同步到用户账户 */
+async function syncLocalOrdersToAccount() {
+  if (!currentUser) return;
+  const history = loadOrderHistory();
+  for (const order of history) {
+    /* 如果订单没有 user_id，向服务器更新 */
+    if (!order.user_id) {
+      try {
+        await fetch(API_BASE + `/orders/${order.id}/bind`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id })
+        });
+      } catch (e) { /* 忽略错误 */ }
+    }
+  }
+}
+
+/* 从服务器拉取用户的所有订单 */
+async function syncOrdersFromServer() {
+  if (!currentUser) return;
+  const serverOrders = await api(`/user/${currentUser.id}/orders`);
+  if (serverOrders && Array.isArray(serverOrders)) {
+    /* 合并服务器订单和本地订单 */
+    let history = loadOrderHistory();
+    const localIds = new Set(history.map(o => o.id));
+    /* 添加服务器上有但本地没有的订单 */
+    serverOrders.forEach(so => {
+      if (!localIds.has(so.id)) {
+        history.unshift(so);
+      } else {
+        /* 更新本地已有订单的状态 */
+        const idx = history.findIndex(o => o.id === so.id);
+        if (idx >= 0) {
+          history[idx] = { ...history[idx], ...so };
+        }
+      }
+    });
+    /* 按时间排序 */
+    history.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    saveOrderHistory(history);
+
+    /* 如果在订单页，刷新显示 */
+    if (pageOrders.classList.contains('orders-active')) {
+      renderOrdersList();
+    }
+  }
+}
 
 /* ---- API ---- */
 async function api(path, options = {}) {
@@ -197,6 +370,7 @@ const pageCart = document.getElementById('page-cart');
 const pageSuccess = document.getElementById('page-success');
 const pageOrders = document.getElementById('page-orders');
 const pageCheckout = document.getElementById('page-checkout');
+const pageAccount = document.getElementById('page-account');
 const detailContent = document.getElementById('detail-content');
 const qtyNumber = document.getElementById('qty-number');
 const detailPrice = document.getElementById('detail-price');
@@ -678,7 +852,8 @@ async function submitOrder() {
     body: JSON.stringify({
       items: items.map(c => ({ id: c.id, name: c.name, brand: c.brand, price: c.price, qty: c.qty, image: c.image })),
       total,
-      contact: { name, phone, address, note }
+      contact: { name, phone, address, note },
+      userId: currentUser ? currentUser.id : null
     })
   });
 
@@ -822,8 +997,10 @@ function renderOrdersList() {
   `).join('');
 }
 
-function deleteLocalOrder(orderId) {
+async function deleteLocalOrder(orderId) {
   if (!confirm('确认删除此订单记录？删除后不可恢复。')) return;
+  /* 同时从服务器删除 */
+  await api(`/orders/${orderId}`, { method: 'DELETE' });
   let history = loadOrderHistory();
   history = history.filter(o => o.id !== orderId);
   saveOrderHistory(history);
@@ -846,6 +1023,7 @@ function showPage(target) {
   pageSuccess.classList.remove('success-active');
   pageOrders.classList.remove('orders-active');
   pageCheckout.classList.remove('checkout-active');
+  pageAccount.classList.remove('account-active');
 
   if (target === 'browse') {
     renderProductGrid();
@@ -870,6 +1048,13 @@ function showPage(target) {
     renderOrdersList();
     /* 进入订单页时从服务器同步最新状态 */
     syncAllOrders();
+    /* 如果已登录，从服务器拉取用户订单 */
+    if (currentUser) syncOrdersFromServer();
+  } else if (target === 'account') {
+    pageBrowse.classList.add('slide-out-left');
+    pageAccount.classList.add('account-active');
+    cartBar.classList.add('hidden');
+    updateAccountUI();
   }
 }
 
@@ -921,6 +1106,30 @@ renderProductGrid();
 updateCartBar();
 loadProducts();
 connectWS();
+
+/* 加载用户会话 */
+currentUser = loadUser();
+if (currentUser) {
+  /* 验证 token 是否有效 */
+  api('/verify-token', {
+    method: 'POST',
+    body: JSON.stringify({ token: currentUser.token })
+  }).then(result => {
+    if (result && result.valid) {
+      currentUser = { ...currentUser, ...result.user };
+      saveUser(currentUser);
+      updateAccountUI();
+      /* 登录有效，从服务器同步订单 */
+      syncOrdersFromServer();
+    } else {
+      /* token 失效，清除 */
+      clearUser();
+      updateAccountUI();
+    }
+  });
+} else {
+  updateAccountUI();
+}
 
 /* 启动时同步一次订单状态 */
 syncAllOrders();

@@ -59,6 +59,14 @@ db.exec(`
     name TEXT NOT NULL UNIQUE,
     sort INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS uid_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    token TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 /* ---- 兼容旧数据库：添加 active 列（如果不存在） ---- */
@@ -81,6 +89,12 @@ try {
 } catch (e) {
   db.exec('ALTER TABLE uid_orders ADD COLUMN card_keys TEXT');
   console.log('已添加 card_keys 列到 uid_orders');
+}
+try {
+  db.prepare('SELECT user_id FROM uid_orders LIMIT 0').get();
+} catch (e) {
+  db.exec('ALTER TABLE uid_orders ADD COLUMN user_id INTEGER');
+  console.log('已添加 user_id 列到 uid_orders');
 }
 
 /* ---- 初始化默认分类 ---- */
@@ -124,6 +138,82 @@ app.post('/api/uid/login', (req, res) => {
   } else {
     res.status(401).json({ error: '用户名或密码错误' });
   }
+});
+
+/* ========================================
+   API: 客户端用户注册
+   ======================================== */
+app.post('/api/uid/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: '用户名和密码不能为空' });
+  }
+  if (username.length < 2 || username.length > 20) {
+    return res.status(400).json({ error: '用户名长度需2-20个字符' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: '密码至少6位' });
+  }
+
+  /* 检查用户名是否已存在 */
+  const existing = db.prepare('SELECT id FROM uid_users WHERE username = ?').get(username);
+  if (existing) {
+    return res.status(400).json({ error: '该用户名已被注册' });
+  }
+
+  /* 密码加密存储 */
+  const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+  const token = crypto.createHash('md5').update(username + Date.now() + Math.random()).digest('hex');
+
+  const result = db.prepare('INSERT INTO uid_users (username, password, token) VALUES (?, ?, ?)')
+    .run(username, hashedPassword, token);
+
+  res.json({
+    success: true,
+    user: { id: result.lastInsertRowid, username, token }
+  });
+  console.log(`新用户注册: ${username}`);
+});
+
+/* ========================================
+   API: 客户端用户登录
+   ======================================== */
+app.post('/api/uid/user-login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: '用户名和密码不能为空' });
+  }
+
+  const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+  const user = db.prepare('SELECT * FROM uid_users WHERE username = ? AND password = ?')
+    .get(username, hashedPassword);
+
+  if (!user) {
+    return res.status(401).json({ error: '用户名或密码错误' });
+  }
+
+  /* 更新 token */
+  const token = crypto.createHash('md5').update(username + Date.now() + Math.random()).digest('hex');
+  db.prepare('UPDATE uid_users SET token = ? WHERE id = ?').run(token, user.id);
+
+  res.json({
+    success: true,
+    user: { id: user.id, username: user.username, token }
+  });
+  console.log(`用户登录: ${username}`);
+});
+
+/* ========================================
+   API: 验证用户 token
+   ======================================== */
+app.post('/api/uid/verify-token', (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.json({ valid: false });
+
+  const user = db.prepare('SELECT id, username FROM uid_users WHERE token = ?').get(token);
+  if (!user) return res.json({ valid: false });
+
+  res.json({ valid: true, user: { id: user.id, username: user.username } });
 });
 
 /* ========================================
@@ -282,22 +372,48 @@ app.delete('/api/uid/orders/:id', (req, res) => {
 });
 
 app.post('/api/uid/orders', (req, res) => {
-  const { items, total, contact } = req.body;
+  const { items, total, contact, userId } = req.body;
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: '订单不能为空' });
   }
 
   const orderId = 'ORD-' + Date.now();
   const contactStr = contact ? JSON.stringify(contact) : null;
-  db.prepare('INSERT INTO uid_orders (id, items, total, status, contact) VALUES (?, ?, ?, ?, ?)')
-    .run(orderId, JSON.stringify(items), total || 0, 'pending', contactStr);
+  const uid = userId || null;
+  db.prepare('INSERT INTO uid_orders (id, items, total, status, contact, user_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(orderId, JSON.stringify(items), total || 0, 'pending', contactStr, uid);
 
   const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(orderId);
   order.items = JSON.parse(order.items);
   if (order.contact) order.contact = JSON.parse(order.contact);
   broadcast('order_new', order);
-  console.log(`新订单: ${orderId}, 总额: $${total}`);
+  console.log(`新订单: ${orderId}, 总额: $${total}, 用户ID: ${uid || '未登录'}`);
   res.json(order);
+});
+
+/* 按用户ID查询订单 */
+app.get('/api/uid/user/:userId/orders', (req, res) => {
+  const userId = parseInt(req.params.userId);
+  if (!userId) return res.status(400).json({ error: '无效的用户ID' });
+
+  const orders = db.prepare('SELECT * FROM uid_orders WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+  orders.forEach(o => {
+    o.items = JSON.parse(o.items || '[]');
+    if (o.contact) o.contact = JSON.parse(o.contact);
+  });
+  res.json(orders);
+});
+
+/* 将已有订单绑定到用户 */
+app.patch('/api/uid/orders/:id/bind', (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: '缺少用户ID' });
+
+  const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+
+  db.prepare('UPDATE uid_orders SET user_id = ? WHERE id = ?').run(userId, req.params.id);
+  res.json({ success: true });
 });
 
 app.patch('/api/uid/orders/:id/status', (req, res) => {

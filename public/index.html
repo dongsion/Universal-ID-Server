@@ -17,6 +17,10 @@
         <button class="menu-btn" onclick="showPage('orders')" title="我的订单">
           <svg width="22" height="22" viewBox="0 0 22 22"><path d="M5 4h12l-1 8H6L5 4z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M8 4V3a3 3 0 016 0v1" stroke="currentColor" stroke-width="1.8" fill="none"/></svg>
         </button>
+        <button class="menu-btn" id="user-account-btn" onclick="showAccountPage()" title="我的账户">
+          <svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4 19c0-4 3-6 7-6s7 2 7 6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>
+          <span class="user-badge-dot" id="user-badge-dot" style="display:none;"></span>
+        </button>
         <div class="cart-icon-wrapper" onclick="showPage('cart')">
           <svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 5h3l2 10h8l2-7H7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="8" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/></svg>
           <span class="cart-icon-badge" id="cart-badge-top">0</span>
@@ -177,6 +181,63 @@
       <h2>我的订单</h2>
     </div>
     <div class="orders-list" id="orders-list"></div>
+  </div>
+
+  <!-- ====== 页面7: 账户页（登录/注册/个人信息） ====== -->
+  <div id="page-account" class="page">
+    <div class="cart-header">
+      <button class="back-btn" onclick="showPage('browse')">
+        <svg width="24" height="24" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 12 12)"/></svg>
+      </button>
+      <h2>我的账户</h2>
+    </div>
+
+    <!-- 未登录：登录/注册界面 -->
+    <div id="account-auth-section" class="account-auth-section">
+      <div class="auth-tab-row">
+        <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">登录</button>
+        <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">注册</button>
+      </div>
+      <div class="auth-form">
+        <div class="auth-form-group">
+          <label>用户名</label>
+          <input type="text" id="auth-username" placeholder="请输入用户名" maxlength="20" autocomplete="off">
+        </div>
+        <div class="auth-form-group">
+          <label>密码</label>
+          <input type="password" id="auth-password" placeholder="请输入密码（至少6位）" maxlength="50" autocomplete="off">
+        </div>
+        <div class="auth-form-group" id="auth-confirm-group" style="display:none;">
+          <label>确认密码</label>
+          <input type="password" id="auth-confirm-password" placeholder="请再次输入密码" maxlength="50" autocomplete="off">
+        </div>
+        <button class="auth-submit-btn" id="auth-submit-btn" onclick="handleAuth()">登录</button>
+        <p class="auth-hint" id="auth-hint">还没有账号？点击上方"注册"</p>
+      </div>
+    </div>
+
+    <!-- 已登录：账户信息 -->
+    <div id="account-info-section" class="account-info-section" style="display:none;">
+      <div class="account-avatar-wrap">
+        <div class="account-avatar" id="account-avatar">U</div>
+        <div class="account-username" id="account-username">用户</div>
+        <div class="account-subtext">已登录</div>
+      </div>
+      <div class="account-stats">
+        <div class="account-stat-item" onclick="showPage('orders')">
+          <div class="account-stat-icon">📋</div>
+          <span>我的订单</span>
+        </div>
+        <div class="account-stat-item" onclick="showPage('cart')">
+          <div class="account-stat-icon">🛒</div>
+          <span>购物车</span>
+        </div>
+      </div>
+      <button class="auth-logout-btn" onclick="handleLogout()">退出登录</button>
+      <div class="account-tip">
+        登录后您的订单将自动同步到账户，换设备登录也能查看
+      </div>
+    </div>
   </div>
 
   <!-- ====== 悬浮购物车条 ====== -->
