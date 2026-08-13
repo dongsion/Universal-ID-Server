@@ -55,8 +55,7 @@ async function api(path, options = {}) {
     }
     return await res.json();
   } catch (e) {
-    console.error('API错误:', e);
-    showToast('网络错误');
+    console.error('API错误:', path, e);
     return null;
   }
 }
@@ -165,7 +164,7 @@ function renderDashboard() {
   const totalStock = products.reduce((s, p) => s + (p.stock || 0), 0);
   const stockValue = products.reduce((s, p) => s + (p.price * (p.stock || 0)), 0);
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
-  const totalRevenue = orders.filter(o => o.status === 'completed').reduce((s, o) => s + o.total, 0);
+  const totalRevenue = orders.filter(o => o.status === 'delivered').reduce((s, o) => s + o.total, 0);
 
   statsGrid.innerHTML = `
     <div class="stat-card">
@@ -594,8 +593,15 @@ function renderOrders() {
         <div class="order-card-total">$${Number(o.total).toFixed(2)}</div>
         <div class="order-card-actions">
           ${o.status === 'pending' ? `
-            <button class="btn-primary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'completed')">完成</button>
+            <button class="btn-primary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'confirmed')">确认订单</button>
+            <button class="btn-secondary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'cancelled')">拒绝</button>
+          ` : ''}
+          ${o.status === 'confirmed' ? `
+            <button class="btn-primary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'paid')">确认已收款</button>
             <button class="btn-secondary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'cancelled')">取消</button>
+          ` : ''}
+          ${o.status === 'paid' ? `
+            <button class="btn-primary" onclick="event.stopPropagation(); openOrderModal('${o.id}')">交付卡密</button>
           ` : ''}
         </div>
       </div>
@@ -845,7 +851,31 @@ const sidebarShowBtn = document.getElementById('sidebar-show-btn');
 const mainContent = document.querySelector('.main-content');
 const SIDEBAR_KEY = 'uid_sidebar_collapsed';
 
+/* 创建遮罩层 */
+const sidebarOverlay = document.createElement('div');
+sidebarOverlay.className = 'sidebar-overlay';
+document.body.appendChild(sidebarOverlay);
+sidebarOverlay.addEventListener('click', () => closeSidebarMobile());
+
+function isMobile() {
+  return window.innerWidth <= 768;
+}
+
+function openSidebarMobile() {
+  sidebar.classList.add('mobile-open');
+  sidebarOverlay.classList.add('show');
+}
+
+function closeSidebarMobile() {
+  sidebar.classList.remove('mobile-open');
+  sidebarOverlay.classList.remove('show');
+}
+
 function applySidebarState(collapsed) {
+  if (isMobile()) {
+    closeSidebarMobile();
+    return;
+  }
   if (collapsed) {
     sidebar.classList.add('collapsed');
     mainContent.classList.add('expanded');
@@ -858,16 +888,31 @@ function applySidebarState(collapsed) {
   localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
 }
 
-if (localStorage.getItem(SIDEBAR_KEY) === '1') {
+if (!isMobile() && localStorage.getItem(SIDEBAR_KEY) === '1') {
   applySidebarState(true);
 }
 
 sidebarToggle.addEventListener('click', () => {
-  applySidebarState(true);
+  if (isMobile()) {
+    closeSidebarMobile();
+  } else {
+    applySidebarState(true);
+  }
 });
 
 sidebarShowBtn.addEventListener('click', () => {
-  applySidebarState(false);
+  if (isMobile()) {
+    openSidebarMobile();
+  } else {
+    applySidebarState(false);
+  }
+});
+
+/* 点击导航项后在手机端自动关闭侧边栏 */
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    if (isMobile()) closeSidebarMobile();
+  });
 });
 
 /* ========================================

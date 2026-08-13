@@ -797,9 +797,47 @@ body {
   .sidebar {
     width: 200px;
     padding: 16px 12px;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 20px rgba(0,0,0,0.3);
   }
-  .main-content { margin-left: 200px; padding: 20px; }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .main-content {
+    margin-left: 0 !important;
+    padding: 16px;
+  }
+  .main-content.expanded {
+    margin-left: 0 !important;
+  }
+  .sidebar-show-btn {
+    display: flex !important;
+  }
+  .sidebar-toggle {
+    display: flex;
+  }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .dashboard-row { grid-template-columns: 1fr; }
-  .page-header { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .page-header h1 { font-size: 22px; }
+  .product-table { font-size: 13px; }
+  .product-table th, .product-table td { padding: 8px 6px; }
+  .cell-product-name { font-size: 13px; }
+  .order-filters { flex-wrap: wrap; gap: 6px; }
+  .filter-tab { padding: 6px 12px; font-size: 12px; }
+  .modal { width: 95%; max-width: 400px; }
+  .modal-body { padding: 16px; }
+  .form-row { flex-direction: column; gap: 0; }
+}
+
+/* 手机端遮罩 */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 99;
+}
+.sidebar-overlay.show {
+  display: block;
 }
