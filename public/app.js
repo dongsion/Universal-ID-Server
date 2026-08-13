@@ -912,30 +912,43 @@ async function submitOrder() {
     cartBar.classList.add('hidden');
     renderSuccessPage(order);
     showPage('success');
-    showToast('订单已提交，等待商家确认');
+    showToast('订单已提交，请扫码支付');
   }
 }
 
 /* ========================================
    订单成功页
    ======================================== */
+let currentSuccessOrderId = null;
+
 function renderSuccessPage(order) {
+  currentSuccessOrderId = order.id;
   const successTitle = document.getElementById('success-title');
   const successIcon = document.getElementById('success-icon');
+  const payQrSection = document.getElementById('pay-qr-section');
+
   if (successTitle) {
-    successTitle.textContent = order.status === 'delivered' ? '卡密已交付' : order.status === 'cancelled' ? '订单已取消' : '订单已提交';
+    successTitle.textContent = order.status === 'delivered' ? '卡密已交付' : order.status === 'cancelled' ? '订单已取消' : order.status === 'confirmed' ? '等待商家确认收款' : order.status === 'paid' ? '商家处理中' : '订单已提交';
   }
   if (successIcon) {
-    successIcon.textContent = order.status === 'delivered' ? '✓' : order.status === 'cancelled' ? '✕' : '⏳';
-    successIcon.style.background = order.status === 'cancelled' ? '#ff3b30' : order.status === 'delivered' ? '#34c759' : '#FFD60A';
+    successIcon.textContent = order.status === 'delivered' ? '✓' : order.status === 'cancelled' ? '✕' : order.status === 'confirmed' ? '💰' : order.status === 'paid' ? '📦' : '📱';
+    successIcon.style.background = order.status === 'cancelled' ? '#ff3b30' : order.status === 'delivered' ? '#34c759' : order.status === 'confirmed' ? '#FF9500' : order.status === 'paid' ? '#007AFF' : '#FFD60A';
   }
 
   document.getElementById('success-order-id').textContent = `订单号：${order.id}`;
 
+  /* 显示/隐藏二维码区域 */
+  if (order.status === 'pending') {
+    payQrSection.style.display = 'block';
+    document.getElementById('pay-qr-amount').textContent = `$${Number(order.total).toFixed(2)}`;
+  } else {
+    payQrSection.style.display = 'none';
+  }
+
   const statusNames = {
-    'pending': '商家确认中',
-    'confirmed': '已确认，请付款',
-    'paid': '商家处理中',
+    'pending': '待付款',
+    'confirmed': '已支付，待商家确认',
+    'paid': '商家已确认收款',
     'delivered': '卡密已交付',
     'cancelled': '已取消'
   };
@@ -977,13 +990,37 @@ function renderSuccessPage(order) {
     </div>
     ${cardKeysHTML}
     <div style="margin-top:16px;padding:12px;background:#FFF8E0;border-radius:10px;font-size:12px;color:#b8860b;line-height:1.6;">
-      ${order.status === 'pending' ? '⏳ 商家正在确认您的订单，请耐心等待...' : ''}
-      ${order.status === 'confirmed' ? '💰 商家已确认，请联系商家付款，付款后商家将发放卡密' : ''}
-      ${order.status === 'paid' ? '📦 商家正在处理，卡密即将发出...' : ''}
+      ${order.status === 'pending' ? '📱 请扫描上方二维码完成支付，支付后点击"我已支付"按钮' : ''}
+      ${order.status === 'confirmed' ? '⏳ 您已标记支付，等待商家确认收款...' : ''}
+      ${order.status === 'paid' ? '📦 商家已确认收款，正在准备卡密...' : ''}
       ${order.status === 'delivered' ? '✅ 卡密已发放，请妥善保管！' : ''}
       ${order.status === 'cancelled' ? '❌ 订单已取消' : ''}
     </div>
   `;
+}
+
+/* 客户标记已支付 */
+async function markAsPaid() {
+  if (!currentSuccessOrderId) return;
+  const btn = document.getElementById('pay-paid-btn');
+  btn.disabled = true;
+  btn.textContent = '提交中...';
+
+  const result = await api(`/orders/${currentSuccessOrderId}/user-paid`, { method: 'PATCH' });
+
+  if (result) {
+    /* 更新本地订单 */
+    let history = loadOrderHistory();
+    const idx = history.findIndex(o => o.id === result.id);
+    if (idx >= 0) history[idx] = { ...history[idx], ...result };
+    saveOrderHistory(history);
+
+    renderSuccessPage(result);
+    showToast('已通知商家，等待确认收款');
+  } else {
+    btn.disabled = false;
+    btn.textContent = '我已支付';
+  }
 }
 
 /* ========================================
@@ -1004,7 +1041,7 @@ function renderOrdersList() {
     return;
   }
 
-  const statusNames = { 'pending': '商家确认中', 'confirmed': '待付款', 'paid': '处理中', 'delivered': '已交付', 'cancelled': '已取消' };
+  const statusNames = { 'pending': '待付款', 'confirmed': '已支付待确认', 'paid': '商家已确认', 'delivered': '已交付', 'cancelled': '已取消' };
   const statusColors = { 'pending': '#FFD60A', 'confirmed': '#FF9500', 'paid': '#007AFF', 'delivered': '#34c759', 'cancelled': '#ff3b30' };
 
   ordersList.innerHTML = history.map(o => `

@@ -2047,6 +2047,79 @@ html, body {
 }
 .success-total-label { font-size: 14px; font-weight: 700; color: #1a1a1a; }
 .success-total-amount { font-size: 28px; font-weight: 900; color: #1a1a1a; }
+
+/* ========================================
+   支付二维码卡片
+   ======================================== */
+.pay-qr-card {
+  margin: 0 20px 20px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px 24px;
+  text-align: center;
+  border: 2px solid #07C160;
+  box-shadow: 0 4px 20px rgba(7, 193, 96, 0.1);
+}
+.pay-qr-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #07C160;
+  margin-bottom: 4px;
+}
+.pay-qr-amount {
+  font-size: 32px;
+  font-weight: 900;
+  color: #1a1a1a;
+  margin-bottom: 16px;
+}
+.pay-qr-img-wrap {
+  display: inline-block;
+  padding: 12px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #f0f0f3;
+  margin-bottom: 16px;
+}
+.pay-qr-img {
+  width: 220px;
+  height: 220px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.pay-qr-tip {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+}
+.pay-qr-tip-sub {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 20px;
+}
+.pay-paid-btn {
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #07C160, #06AD56);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(7, 193, 96, 0.3);
+}
+.pay-paid-btn:active {
+  transform: scale(0.97);
+}
+.pay-paid-btn:disabled {
+  background: #ccc;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .success-actions {
   position: absolute;
   bottom: 0;

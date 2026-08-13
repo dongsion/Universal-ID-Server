@@ -342,7 +342,7 @@ app.patch('/api/uid/products/:id/toggle', (req, res) => {
 /* ========================================
    API: 订单管理
    ======================================== */
-/* ---- 订单状态：pending=待确认, confirmed=已确认待付款, paid=已付款待发货, delivered=已交付卡密, cancelled=已取消 ---- */
+/* ---- 订单状态：pending=待付款(客户扫码), confirmed=客户已支付待确认, paid=商家确认收款待发卡, delivered=已交付卡密, cancelled=已取消 ---- */
 app.get('/api/uid/orders', (req, res) => {
   const orders = db.prepare('SELECT * FROM uid_orders ORDER BY created_at DESC').all();
   orders.forEach(o => {
@@ -432,6 +432,24 @@ app.patch('/api/uid/orders/:id/status', (req, res) => {
   if (updated.contact) updated.contact = JSON.parse(updated.contact);
   if (updated.card_keys) updated.card_keys = updated.card_keys;
   broadcast('order_updated', updated);
+  res.json(updated);
+});
+
+/* 客户自助标记已支付（pending → confirmed） */
+app.patch('/api/uid/orders/:id/user-paid', (req, res) => {
+  const order = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: '订单不存在' });
+  if (order.status !== 'pending') {
+    return res.status(400).json({ error: '当前状态无法标记已支付' });
+  }
+
+  db.prepare('UPDATE uid_orders SET status=? WHERE id=?').run('confirmed', req.params.id);
+  const updated = db.prepare('SELECT * FROM uid_orders WHERE id = ?').get(req.params.id);
+  updated.items = JSON.parse(updated.items);
+  if (updated.contact) updated.contact = JSON.parse(updated.contact);
+  if (updated.card_keys) updated.card_keys = updated.card_keys;
+  broadcast('order_updated', updated);
+  console.log(`客户标记已支付: ${req.params.id}`);
   res.json(updated);
 });
 

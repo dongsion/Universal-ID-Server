@@ -16,9 +16,9 @@ async function loadCategories() {
 
 /* ---- 订单状态映射 ---- */
 const STATUS_NAMES = {
-  'pending': '待确认',
-  'confirmed': '待付款',
-  'paid': '处理中',
+  'pending': '待付款',
+  'confirmed': '已支付待确认',
+  'paid': '已确认收款',
   'delivered': '已交付',
   'cancelled': '已取消',
 };
@@ -594,12 +594,11 @@ function renderOrders() {
         <div class="order-card-total">$${Number(o.total).toFixed(2)}</div>
         <div class="order-card-actions">
           ${o.status === 'pending' ? `
-            <button class="btn-primary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'confirmed')">确认订单</button>
-            <button class="btn-secondary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'cancelled')">拒绝</button>
+            <button class="btn-secondary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'cancelled')">取消</button>
           ` : ''}
           ${o.status === 'confirmed' ? `
-            <button class="btn-primary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'paid')">确认已收款</button>
-            <button class="btn-secondary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'cancelled')">取消</button>
+            <button class="btn-primary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'paid')">确认收款</button>
+            <button class="btn-secondary" onclick="event.stopPropagation(); updateOrderStatus('${o.id}', 'cancelled')">拒绝</button>
           ` : ''}
           ${o.status === 'paid' ? `
             <button class="btn-primary" onclick="event.stopPropagation(); openOrderModal('${o.id}')">交付卡密</button>
@@ -687,13 +686,13 @@ function openOrderModal(orderId) {
   const footer = document.getElementById('order-modal-footer');
   if (order.status === 'pending') {
     footer.innerHTML = `
-      <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">拒绝订单</button>
-      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'confirmed')">确认订单</button>
+      <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">取消订单</button>
+      <button class="btn-primary" onclick="openOrderModal('${order.id}'); document.getElementById('order-deliver-section').style.display='block';">直接发卡密</button>
     `;
   } else if (order.status === 'confirmed') {
     footer.innerHTML = `
-      <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">取消订单</button>
-      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'paid')">确认已收款</button>
+      <button class="btn-secondary" onclick="updateOrderStatus('${order.id}', 'cancelled')">拒绝收款</button>
+      <button class="btn-primary" onclick="updateOrderStatus('${order.id}', 'paid')">确认收款</button>
     `;
   } else if (order.status === 'paid') {
     footer.innerHTML = `
