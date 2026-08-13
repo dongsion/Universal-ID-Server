@@ -31,6 +31,10 @@ let uploadedImage = null;
 let selectedColor = '#FFF3D6';
 let orderFilter = 'all';
 
+/* ---- 聊天状态 ---- */
+let chatConversations = {};
+let chatActiveSession = null;
+
 /* ---- DOM ---- */
 const productTbody = document.getElementById('product-tbody');
 const orderList = document.getElementById('order-list');
@@ -41,6 +45,9 @@ const navOrderBadge = document.getElementById('nav-order-badge');
 const productModal = document.getElementById('product-modal');
 const orderModal = document.getElementById('order-modal');
 const toast = document.getElementById('m-toast');
+const chatNavBadge = document.getElementById('chat-nav-badge');
+const chatConvList = document.getElementById('chat-conv-list');
+const chatWindow = document.getElementById('chat-window');
 
 /* ---- API 请求封装 ---- */
 async function api(path, options = {}) {
@@ -83,7 +90,11 @@ function connectWS() {
   try {
     ws = new WebSocket(WS_URL);
 
-    ws.onopen = () => console.log('商家端 WebSocket 已连接');
+    ws.onopen = () => {
+      console.log('商家端 WebSocket 已连接');
+      ws.send(JSON.stringify({ type: 'chat_register', data: { role: 'merchant' } }));
+      ws.send(JSON.stringify({ type: 'chat_get_conversations' }));
+    };
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
@@ -135,6 +146,33 @@ function handleWSMessage(msg) {
     if (activeTab === 'dashboard') renderDashboard();
     if (activeTab === 'orders') renderOrders();
     updateOrderBadge();
+  } else if (type === 'chat_message') {
+    const sid = data.sessionId;
+    if (!chatConversations[sid]) chatConversations[sid] = { messages: [], unread: 0, lastTime: '' };
+    chatConversations[sid].messages.push({ from: data.from || 'customer', text: data.text, timestamp: data.timestamp || new Date().toISOString() });
+    chatConversations[sid].lastTime = data.timestamp || new Date().toISOString();
+    if (chatActiveSession !== sid) chatConversations[sid].unread++;
+    updateChatNavBadge();
+    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab;
+    if (activeTab === 'chat') renderChatTab();
+    showToast(`新消息：${data.text.substring(0, 30)}`);
+  } else if (type === 'chat_conversations') {
+    if (data.conversations) {
+      data.conversations.forEach(conv => {
+        if (!chatConversations[conv.sessionId]) {
+          chatConversations[conv.sessionId] = { messages: conv.messages || [], unread: 0, lastTime: conv.lastTime || '' };
+        } else {
+          conv.messages.forEach(m => {
+            const exists = chatConversations[conv.sessionId].messages.find(e => e.timestamp === m.timestamp && e.text === m.text);
+            if (!exists) chatConversations[conv.sessionId].messages.push(m);
+          });
+          if (conv.lastTime) chatConversations[conv.sessionId].lastTime = conv.lastTime;
+        }
+      });
+      updateChatNavBadge();
+      const activeTab = document.querySelector('.nav-item.active')?.dataset.tab;
+      if (activeTab === 'chat') renderChatTab();
+    }
   }
 }
 
@@ -152,6 +190,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
     if (tab === 'dashboard') renderDashboard();
     if (tab === 'products') renderProductTable();
     if (tab === 'orders') renderOrders();
+    if (tab === 'chat') renderChatTab();
     if (tab === 'settings') updateSettingsUI();
   });
 });
@@ -872,6 +911,98 @@ function merchantLogout() {
   setTimeout(() => {
     location.reload();
   }, 500);
+}
+
+/* ========================================
+   ===== 聊天功能 =====
+   ======================================== */
+function escapeHtmlAdmin(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+function formatChatTime(ts) { const d = new Date(ts); const diff = (new Date() - d) / 1000; if (diff < 60) return '刚刚'; if (diff < 3600) return Math.floor(diff / 60) + '分钟前'; if (diff < 86400) return Math.floor(diff / 3600) + '小时前'; return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }); }
+function formatMsgTime(ts) { return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); }
+function updateChatNavBadge() {
+  const total = Object.values(chatConversations).reduce((s, c) => s + (c.unread || 0), 0);
+  if (total > 0) { chatNavBadge.textContent = total > 99 ? '99+' : total; chatNavBadge.style.display = 'flex'; }
+  else chatNavBadge.style.display = 'none';
+}
+function renderChatTab() { renderConvList(); renderChatWindow(); }
+function renderConvList() {
+  const sessions = Object.entries(chatConversations).sort((a, b) => {
+    const tA = a[1].lastTime ? new Date(a[1].lastTime).getTime() : 0;
+    const tB = b[1].lastTime ? new Date(b[1].lastTime).getTime() : 0;
+    return tB - tA;
+  });
+  if (sessions.length === 0) {
+    chatConvList.innerHTML = `<div class="chat-conv-empty"><div class="chat-conv-empty-icon">💬</div><div class="chat-conv-empty-text">暂无消息</div><div class="chat-conv-empty-sub">客户的消息会显示在这里</div></div>`;
+    return;
+  }
+  chatConvList.innerHTML = sessions.map(([sid, conv]) => {
+    const lastMsg = conv.messages[conv.messages.length - 1] || {};
+    const isActive = chatActiveSession === sid;
+    const shortId = sid.replace('cust_', '').substring(0, 8);
+    return `<div class="chat-conv-item ${isActive ? 'active' : ''}" onclick="selectConversation('${sid}')">
+      <div class="chat-conv-avatar">${shortId.charAt(0).toUpperCase()}</div>
+      <div class="chat-conv-info">
+        <div class="chat-conv-top">
+          <span class="chat-conv-name">客户 ${shortId}</span>
+          <span class="chat-conv-time">${conv.lastTime ? formatChatTime(conv.lastTime) : ''}</span>
+        </div>
+        <div class="chat-conv-preview">${escapeHtmlAdmin(lastMsg.text || '暂无消息')}</div>
+      </div>
+      ${conv.unread > 0 ? `<span class="chat-conv-unread">${conv.unread > 99 ? '99+' : conv.unread}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+function renderChatWindow() {
+  if (!chatActiveSession || !chatConversations[chatActiveSession]) {
+    chatWindow.innerHTML = `<div class="chat-win-empty"><div class="chat-win-empty-icon">💬</div><div class="chat-win-empty-text">选择一个会话开始对话</div><div class="chat-win-empty-sub">点击左侧的客户会话查看消息</div></div>`;
+    return;
+  }
+  const conv = chatConversations[chatActiveSession];
+  const shortId = chatActiveSession.replace('cust_', '').substring(0, 8);
+  chatWindow.innerHTML = `
+    <div class="chat-win-header">
+      <div class="chat-conv-avatar">${shortId.charAt(0).toUpperCase()}</div>
+      <div class="chat-win-header-info">
+        <div class="chat-win-header-name">客户 ${shortId}</div>
+        <div class="chat-win-header-status">在线</div>
+      </div>
+    </div>
+    <div class="chat-win-messages" id="chat-win-msgs">
+      ${conv.messages.length === 0 ? `<div class="chat-win-empty"><div class="chat-win-empty-icon">📝</div><div class="chat-win-empty-text">暂无消息</div><div class="chat-win-empty-sub">向客户发送一条消息开始对话</div></div>` : conv.messages.map(msg => {
+        const isSent = msg.from === 'merchant';
+        return `<div class="chat-bubble ${isSent ? 'sent' : 'received'}">${escapeHtmlAdmin(msg.text)}<div class="chat-bubble-time">${formatMsgTime(msg.timestamp)}</div></div>`;
+      }).join('')}
+    </div>
+    <div class="chat-win-input">
+      <input type="text" id="chat-reply-input" placeholder="输入回复消息..." maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();sendChatReply();}">
+      <button class="chat-win-send-btn" onclick="sendChatReply()">发送</button>
+    </div>`;
+  const msgsEl = document.getElementById('chat-win-msgs');
+  if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+function selectConversation(sid) {
+  chatActiveSession = sid;
+  if (chatConversations[sid]) chatConversations[sid].unread = 0;
+  updateChatNavBadge();
+  renderChatTab();
+  setTimeout(() => { const input = document.getElementById('chat-reply-input'); if (input) input.focus(); }, 100);
+}
+function sendChatReply() {
+  const input = document.getElementById('chat-reply-input');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text || !chatActiveSession) return;
+  const msg = { from: 'merchant', text, timestamp: new Date().toISOString() };
+  if (!chatConversations[chatActiveSession]) chatConversations[chatActiveSession] = { messages: [], unread: 0, lastTime: '' };
+  chatConversations[chatActiveSession].messages.push(msg);
+  chatConversations[chatActiveSession].lastTime = msg.timestamp;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'chat_reply', data: { sessionId: chatActiveSession, text, timestamp: msg.timestamp } }));
+  } else {
+    api('/chat/reply', { method: 'POST', body: JSON.stringify({ sessionId: chatActiveSession, text }) });
+  }
+  input.value = '';
+  renderChatTab();
 }
 
 /* ========================================

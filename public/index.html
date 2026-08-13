@@ -316,6 +316,38 @@
   <!-- ====== 飞入动画 ====== -->
   <div class="fly-clone" id="fly-clone"></div>
 
+  <!-- ====== 聊天窗口 ====== -->
+  <div class="chat-fab" id="chat-fab" onclick="toggleChat()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <path d="M4 5h16v11H8l-4 4V5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span class="chat-fab-badge" id="chat-fab-badge" style="display:none">0</span>
+  </div>
+
+  <div class="chat-overlay" id="chat-overlay">
+    <div class="chat-panel">
+      <div class="chat-panel-header">
+        <div class="chat-panel-title">
+          <div class="chat-panel-avatar">客</div>
+          <div>
+            <div class="chat-panel-name">商家客服</div>
+            <div class="chat-panel-status" id="chat-status">在线</div>
+          </div>
+        </div>
+        <button class="chat-panel-close" onclick="toggleChat()">✕</button>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="输入消息..." maxlength="500">
+        <button class="chat-send-btn" onclick="sendChatMessage()">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M3 10l14-6-4 14-3-5-7-3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ====== Toast ====== -->
   <div class="toast" id="toast"></div>
 </div>

@@ -122,9 +122,94 @@ function broadcast(type, data) {
   });
 }
 
+/* ---- 聊天数据（内存） ---- */
+let chatConversations = {};  // { sessionId: { messages: [], lastTime: '' } }
+const customerConnections = new Map();  // sessionId -> ws
+const merchantConnections = new Set();  // Set<ws>
+
+function wsSend(ws, data) {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
+}
+
+function sendConversationsToMerchant(ws) {
+  const convos = Object.entries(chatConversations).map(([sid, conv]) => ({
+    sessionId: sid,
+    messages: conv.messages,
+    lastTime: conv.lastTime,
+  }));
+  wsSend(ws, { type: 'chat_conversations', data: { conversations: convos } });
+}
+
 wss.on('connection', (ws) => {
   console.log('WebSocket 客户端已连接');
-  ws.on('close', () => console.log('WebSocket 客户端已断开'));
+
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch (e) { return; }
+
+    const { type, data } = msg;
+
+    switch (type) {
+      /* ---- 聊天注册 ---- */
+      case 'chat_register': {
+        ws.role = data.role || 'customer';
+        if (ws.role === 'customer') {
+          const sid = data.sessionId;
+          if (sid) {
+            ws.sessionId = sid;
+            customerConnections.set(sid, ws);
+            if (chatConversations[sid] && chatConversations[sid].messages.length > 0) {
+              wsSend(ws, { type: 'chat_history', data: { messages: chatConversations[sid].messages } });
+            }
+          }
+        } else if (ws.role === 'merchant') {
+          merchantConnections.add(ws);
+          sendConversationsToMerchant(ws);
+        }
+        break;
+      }
+
+      /* ---- 客户发送消息 ---- */
+      case 'chat_send': {
+        const sid = data.sessionId;
+        if (!sid) break;
+        if (!chatConversations[sid]) chatConversations[sid] = { messages: [], lastTime: '' };
+        const message = { from: 'customer', text: data.text, timestamp: data.timestamp || new Date().toISOString() };
+        chatConversations[sid].messages.push(message);
+        chatConversations[sid].lastTime = message.timestamp;
+        const broadcastMsg = { type: 'chat_message', data: { sessionId: sid, ...message } };
+        merchantConnections.forEach(mws => wsSend(mws, broadcastMsg));
+        break;
+      }
+
+      /* ---- 商家回复 ---- */
+      case 'chat_reply': {
+        const sid = data.sessionId;
+        if (!sid) break;
+        if (!chatConversations[sid]) chatConversations[sid] = { messages: [], lastTime: '' };
+        const message = { from: 'merchant', text: data.text, timestamp: data.timestamp || new Date().toISOString() };
+        chatConversations[sid].messages.push(message);
+        chatConversations[sid].lastTime = message.timestamp;
+        const custWs = customerConnections.get(sid);
+        if (custWs) wsSend(custWs, { type: 'chat_message', data: message });
+        break;
+      }
+
+      /* ---- 商家请求会话列表 ---- */
+      case 'chat_get_conversations': {
+        sendConversationsToMerchant(ws);
+        break;
+      }
+    }
+  });
+
+  ws.on('close', () => {
+    if (ws.role === 'customer' && ws.sessionId) {
+      customerConnections.delete(ws.sessionId);
+    }
+    merchantConnections.delete(ws);
+    console.log('WebSocket 客户端已断开');
+  });
 });
 
 /* ========================================
@@ -471,6 +556,33 @@ app.patch('/api/uid/orders/:id/deliver', (req, res) => {
   if (updated.contact) updated.contact = JSON.parse(updated.contact);
   broadcast('order_updated', updated);
   res.json(updated);
+});
+
+/* ========================================
+   API: 聊天（REST 回退）
+   ======================================== */
+app.post('/api/uid/chat/send', (req, res) => {
+  const { sessionId, text } = req.body;
+  if (!sessionId || !text) return res.status(400).json({ error: '缺少参数' });
+  if (!chatConversations[sessionId]) chatConversations[sessionId] = { messages: [], lastTime: '' };
+  const message = { from: 'customer', text, timestamp: new Date().toISOString() };
+  chatConversations[sessionId].messages.push(message);
+  chatConversations[sessionId].lastTime = message.timestamp;
+  const broadcastMsg = { type: 'chat_message', data: { sessionId, ...message } };
+  merchantConnections.forEach(mws => wsSend(mws, broadcastMsg));
+  res.json({ success: true });
+});
+
+app.post('/api/uid/chat/reply', (req, res) => {
+  const { sessionId, text } = req.body;
+  if (!sessionId || !text) return res.status(400).json({ error: '缺少参数' });
+  if (!chatConversations[sessionId]) chatConversations[sessionId] = { messages: [], lastTime: '' };
+  const message = { from: 'merchant', text, timestamp: new Date().toISOString() };
+  chatConversations[sessionId].messages.push(message);
+  chatConversations[sessionId].lastTime = message.timestamp;
+  const custWs = customerConnections.get(sessionId);
+  if (custWs) wsSend(custWs, { type: 'chat_message', data: message });
+  res.json({ success: true });
 });
 
 app.get('/api/uid/health', (req, res) => {

@@ -18,6 +18,13 @@ let cartEditMode = false;
 let buyNowItem = null; /* 立即购买临时商品 */
 const selectedItems = new Set(); /* 购物车选中项 */
 
+/* ---- 聊天状态 ---- */
+let chatMessages = [];
+let chatUnreadCount = 0;
+let chatOpen = false;
+const CHAT_SESSION_KEY = 'uid_chat_session';
+const CHAT_MSGS_KEY = 'uid_chat_messages';
+
 /* ---- 用户会话 ---- */
 let currentUser = null; /* { id, username, token } */
 let authMode = 'login'; /* 'login' 或 'register' */
@@ -288,7 +295,10 @@ let ws = null;
 function connectWS() {
   try {
     ws = new WebSocket(WS_URL);
-    ws.onopen = () => console.log('WebSocket 已连接');
+    ws.onopen = () => {
+      console.log('WebSocket 已连接');
+      ws.send(JSON.stringify({ type: 'chat_register', data: { sessionId: getChatSessionId(), role: 'customer' } }));
+    };
     ws.onmessage = (event) => handleWSMessage(JSON.parse(event.data));
     ws.onclose = () => setTimeout(connectWS, 5000);
     ws.onerror = () => ws.close();
@@ -321,6 +331,18 @@ function handleWSMessage(msg) {
       renderOrdersList();
     }
     showToast('订单已被删除');
+  } else if (type === 'chat_message') {
+    const msg = { from: data.from || 'merchant', text: data.text, timestamp: data.timestamp || new Date().toISOString() };
+    chatMessages.push(msg);
+    saveChatMessages();
+    if (chatOpen) { renderChatMessages(); } else { chatUnreadCount++; updateChatBadge(); }
+    if (navigator.vibrate) navigator.vibrate(80);
+  } else if (type === 'chat_history') {
+    if (data.messages && data.messages.length > 0) {
+      chatMessages = data.messages;
+      saveChatMessages();
+      renderChatMessages();
+    }
   }
 }
 
@@ -423,6 +445,13 @@ const cartBody = document.getElementById('cart-body');
 const cartFooter = document.getElementById('cart-footer');
 const toast = document.getElementById('toast');
 const searchInput = document.getElementById('search-input');
+
+/* ---- 聊天 DOM ---- */
+const chatFab = document.getElementById('chat-fab');
+const chatFabBadge = document.getElementById('chat-fab-badge');
+const chatOverlay = document.getElementById('chat-overlay');
+const chatMessagesEl = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
 
 /* ========================================
    商品图片 HTML
@@ -707,6 +736,7 @@ function updateCartBar() {
     `<div class="cart-thumb" style="background:${c.bg || '#f0f0f3'}">${thumbImageHTML(c)}</div>`
   ).join('');
   if (pageCart.classList.contains('cart-active')) renderCartBody();
+  updateChatFabPosition();
 }
 
 /* ========================================
@@ -1212,9 +1242,89 @@ function showToast(message) {
 }
 
 /* ========================================
+   ===== 实时聊天功能 =====
+   ======================================== */
+function getChatSessionId() {
+  let id = localStorage.getItem(CHAT_SESSION_KEY);
+  if (!id) {
+    id = 'cust_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    localStorage.setItem(CHAT_SESSION_KEY, id);
+  }
+  return id;
+}
+function loadChatMessages() {
+  const saved = localStorage.getItem(CHAT_MSGS_KEY);
+  if (saved) { try { chatMessages = JSON.parse(saved); } catch (e) { chatMessages = []; } }
+}
+function saveChatMessages() {
+  localStorage.setItem(CHAT_MSGS_KEY, JSON.stringify(chatMessages.slice(-200)));
+}
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+function renderChatMessages() {
+  if (chatMessages.length === 0) {
+    chatMessagesEl.innerHTML = `<div style="text-align:center;padding:40px 0;color:#999"><div style="font-size:36px;margin-bottom:12px">💬</div><p style="font-size:14px;font-weight:600;color:#666">暂无消息</p><p style="font-size:12px;margin-top:4px">向商家发送一条消息开始对话</p></div>`;
+    return;
+  }
+  chatMessagesEl.innerHTML = chatMessages.map(msg => {
+    const isSent = msg.from === 'customer';
+    const time = new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return `<div class="chat-message ${isSent ? 'sent' : 'received'}">${escapeHtml(msg.text)}<div class="chat-message-time">${time}</div></div>`;
+  }).join('');
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+function toggleChat() {
+  chatOpen = !chatOpen;
+  if (chatOpen) {
+    chatOverlay.classList.add('active');
+    chatUnreadCount = 0;
+    updateChatBadge();
+    renderChatMessages();
+    setTimeout(() => chatInput.focus(), 300);
+  } else {
+    chatOverlay.classList.remove('active');
+  }
+}
+function updateChatBadge() {
+  if (chatUnreadCount > 0) {
+    chatFabBadge.textContent = chatUnreadCount > 99 ? '99+' : chatUnreadCount;
+    chatFabBadge.style.display = 'flex';
+    chatFabBadge.classList.add('pop');
+    setTimeout(() => chatFabBadge.classList.remove('pop'), 400);
+  } else {
+    chatFabBadge.style.display = 'none';
+  }
+}
+function updateChatFabPosition() {
+  if (!cartBar.classList.contains('hidden')) chatFab.classList.add('with-cart');
+  else chatFab.classList.remove('with-cart');
+}
+function sendChatMessage() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  const msg = { from: 'customer', text: text, timestamp: new Date().toISOString() };
+  chatMessages.push(msg);
+  saveChatMessages();
+  renderChatMessages();
+  chatInput.value = '';
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'chat_send', data: { sessionId: getChatSessionId(), text: text, timestamp: msg.timestamp } }));
+  } else {
+    api('/chat/send', { method: 'POST', body: JSON.stringify({ sessionId: getChatSessionId(), text: text }) });
+  }
+}
+chatInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(); }
+});
+
+/* ========================================
    初始化
    ======================================== */
 loadCart();
+loadChatMessages();
 loadCategories();
 renderProductGrid();
 updateCartBar();
